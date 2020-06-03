@@ -13,7 +13,8 @@ def getDsplcmentArray(shape_info, curve_vid_1, curve_vid_2, trnsfrm_func) :
 
     return dsplcmentArray
 
-def getDsplcmntAdjSumSquare(shape_info, pair_info, trnsfrm_func):
+def getDsplcmntAdjSumSquare(shape_info, pair_info, trnsfrm_func_id):
+    trnsfrm_func = trnsfrm_func_lib.trsfrm_funcs[trnsfrm_func_id]
     curve_vid_1, curve_vid_2 = shape_info.getPairCurveVids(pair_info)
     curve_verts_num = len(curve_vid_1)
 
@@ -23,6 +24,8 @@ def getDsplcmntAdjSumSquare(shape_info, pair_info, trnsfrm_func):
     # displacment has to be integers
     avg_displcmt = np.round(avg_displcmt)
 
+    # if trnsfrm_func_id == 1 or trnsfrm_func_id == 2:
+    #     avg_displcmt[0] += 0.5
     dsplcmntAdjArray = dsplcmentArray - avg_displcmt
     dsplcmntSum = np.sum(np.square(dsplcmntAdjArray))
     return (avg_displcmt, dsplcmntSum)
@@ -61,12 +64,11 @@ class DsplcCalc:
 
             # try each transfer function
             for i in range(len(trnsfrm_func_lib.trsfrm_funcs)):
-                avg_displcmt, dsplcmntSum = getDsplcmntAdjSumSquare(self.shape_info, path_pair, trnsfrm_func_lib.trsfrm_funcs[i])
+                avg_displcmt, dsplcmntSum = getDsplcmntAdjSumSquare(self.shape_info, path_pair, i)
                 if dsplcmntSum < dsplcmntSum_min:
                     dsplcmntSum_min = dsplcmntSum
                     avg_displcmt_min = avg_displcmt
                     trnsfrm_func_id = i
-
 
             self.pair_bndry_dsplcmnt.append([avg_displcmt_min, trnsfrm_func_id])
 
@@ -130,6 +132,7 @@ class DsplcCalc:
                 return i
         return -1
 
+
     def group_vars(self):
         # group related vars
         for pair_id in range(len(self.shape_info.path_pairs)):
@@ -145,8 +148,6 @@ class DsplcCalc:
                     g1_id = self.get_group_id(pairs[j][0])
                     g2_id = self.get_group_id(pairs[j][1])
 
-                    print("first: ", pairs[j][0])
-                    print("second: ", pairs[j][1])
                     # merge var_pair_id to g1
                     if g1_id >=0 and g2_id < 0:
                         self.var_groups[g1_id].append(pairs[j][1])
@@ -160,6 +161,7 @@ class DsplcCalc:
                             self.group_closed[g1_id] = True
                         # in different group, merge them
                         else:
+                            print("merge: ", self.var_groups[g1_id], ", ", self.var_groups[g2_id])
                             self.var_groups[g1_id] = self.var_groups[g1_id] + self.var_groups[g2_id]
                             self.var_groups.pop(g2_id)
                             self.group_closed.pop(g2_id)
@@ -167,7 +169,7 @@ class DsplcCalc:
                     else:
                         self.var_groups.append(pairs[j])
                         self.group_closed.append(False)
-            print("self.var_groups: ", self.var_groups)
+                print("self.var_groups: ", self.var_groups)
 
     def buildGroupConnGraph(self):
         node_num = len(self.var_groups)
@@ -175,7 +177,8 @@ class DsplcCalc:
 
         def insert_from1to2(group_graph, node1, node2, edge):
             if node2 in self.group_graph[node1]:
-                self.group_graph[node1][node2].append(edge)
+                if not (edge in self.group_graph[node1][node2]):
+                    self.group_graph[node1][node2].append(edge)
             else:
                 self.group_graph[node1][node2] = [edge]
 
@@ -199,11 +202,12 @@ class DsplcCalc:
     def getOrder(self):
         self.order_calc = order_calc_lib.OrderCalc(self.group_graph, self.group_closed)
         self.order_calc.determine_order()
-
+        self.order_calc.setBrokenEdges()
         # print("self.variable_ids: ", self.variable_ids)
-        print("self.order_calc.ordered_group: ", self.order_calc.ordered_group)
-        print("self.var_groups: ", self.var_groups)
-        print("self.group_closed: ", self.group_closed)
+        # print("self.order_calc.ordered_group: ", self.order_calc.ordered_group)
+        # print("self.var_groups: ", self.var_groups)
+        # print("self.group_closed: ", self.group_closed)
+        print("self.order_calc.group_bndry_map: ", self.order_calc.group_bndry_map)
         # self.order_calc.group_bndry_map[0] = 9
         # self.order_calc.group_bndry_map[4] = 8
         # self.order_calc.group_bndry_map[2] = 11
@@ -223,25 +227,25 @@ class DsplcCalc:
             # for y
             rel_funcs[1] = [1, trslate_funcs[1]]
 
-        # eps flip xy
+        # 90 ccw
         elif trnsfrm_id == 1:
             trslate_funcs = np.zeros(2)
-            trslate_funcs[0] = - ( dsplcmnt_info[0][0] - self.shape_info.bndry_verts_flat[ep][1] + self.shape_info.bndry_verts_flat[ep_pair][0])
-            trslate_funcs[1] = - ( dsplcmnt_info[0][1] - self.shape_info.bndry_verts_flat[ep][0] + self.shape_info.bndry_verts_flat[ep_pair][1])
+            trslate_funcs[0] = - ( dsplcmnt_info[0][1] - self.shape_info.bndry_verts_flat[ep][0] + self.shape_info.bndry_verts_flat[ep_pair][1])
+            trslate_funcs[1] = - ( dsplcmnt_info[0][0] + self.shape_info.bndry_verts_flat[ep][1] + self.shape_info.bndry_verts_flat[ep_pair][0])
             # for x
             rel_funcs[0] = [1, trslate_funcs[0]]
             # for y
-            rel_funcs[1] = [1, trslate_funcs[1]]
+            rel_funcs[1] = [-1, trslate_funcs[1]]
 
-        # eps flip xy, *-1
+        # 90 cw
         elif trnsfrm_id == 2:
             trslate_funcs = np.zeros(2)
-            trslate_funcs[0] = - ( dsplcmnt_info[0][0] + self.shape_info.bndry_verts_flat[ep][1] + self.shape_info.bndry_verts_flat[ep_pair][0])
-            trslate_funcs[1] = - ( dsplcmnt_info[0][1] + self.shape_info.bndry_verts_flat[ep][0] + self.shape_info.bndry_verts_flat[ep_pair][1])
+            trslate_funcs[0] = - ( dsplcmnt_info[0][1] + self.shape_info.bndry_verts_flat[ep][0] + self.shape_info.bndry_verts_flat[ep_pair][1])
+            trslate_funcs[1] = - ( dsplcmnt_info[0][0] - self.shape_info.bndry_verts_flat[ep][1] + self.shape_info.bndry_verts_flat[ep_pair][0])
             # for x
             rel_funcs[0] = [-1, trslate_funcs[0]]
             # for y
-            rel_funcs[1] = [-1, trslate_funcs[1]]
+            rel_funcs[1] = [1, trslate_funcs[1]]
 
         # same xy, *-1
         elif trnsfrm_id == 3:
@@ -256,42 +260,49 @@ class DsplcCalc:
 
     def calcVariables(self):
         for same_slot_nodes in self.order_calc.ordered_group:
-            print("same_slot_nodes: ", same_slot_nodes)
             pair_rel_funcs = {}
             explcit_ep_ids = {}
 
             # print("self.pair_bndry_dsplcmnt: ", self.pair_bndry_dsplcmnt)
 
             for node in same_slot_nodes:
-                # if node is odd, then the relationships already found
-                if node % 2 == 0:
-                    # find pairwise var relationship
-                    vars = self.var_groups[node]
-                    outgoing_pair_ids = self.order_calc.getOutgoingPairs(node)
-                    # print("node: ", node, ", outgoing_pair_ids: ", outgoing_pair_ids)
-                    # process all outgoing pairs
-                    for pair_id in outgoing_pair_ids:
-                        # if this pair is to be skipped
-                        if self.group_closed[node] and self.order_calc.group_bndry_map[node] == pair_id:
-                            continue
+                # # if node is odd, then the relationships already found
+                # if node % 2 == 0:
+                # find pairwise var relationship
+                vars = self.var_groups[node]
+                outgoing_pair_ids = self.order_calc.getOutgoingPairs(node)
+                # print("node: ", node, ", outgoing_pair_ids: ", outgoing_pair_ids)
+                # process all outgoing pairs
+                # only break once for a group, in case both x, y are in same group
+                broken_pair = False
+                for pair_id in outgoing_pair_ids:
+                    # if this pair is to be skipped
+                    if self.group_closed[node] and node in self.order_calc.group_bndry_map \
+                        and self.order_calc.group_bndry_map[node] == pair_id:
+                        broken_pair = True
+                        # continue
+                    else:
+                        broken_pair = False
 
-                        eps, ep_pairs = self.shape_info.get_ep_pair(pair_id)
-                        var_pairs = self.get_var_pair(pair_id)
-                        dsplcmnt_info = self.pair_bndry_dsplcmnt[pair_id]
+                    eps, ep_pairs = self.shape_info.get_ep_pair(pair_id)
+                    var_pairs = self.get_var_pair(pair_id)
+                    dsplcmnt_info = self.pair_bndry_dsplcmnt[pair_id]
 
-                        # start and end v
-                        for i in range(2):
-                            pairs = var_pairs[i]
-                            # only one endpoint is in the group
-                            if pairs[0][0] in self.var_groups[node] or pairs[1][0] in self.var_groups[node]:
-                                rel_funcs = self.getRelationFunc(eps[i], ep_pairs[i], dsplcmnt_info)
-                                # x and y
-                                for j in range(2):
-                                    pair_rel_funcs[(pairs[j][0], pairs[j][1])] = rel_funcs[j]
-                if node == 8:
-                    print("pair_rel_funcs: ", pair_rel_funcs)
-            # for key in pair_rel_funcs:
-            #     print(key, ", ", pair_rel_funcs[key])
+                    # start and end v
+                    for i in range(2):
+                        pairs = var_pairs[i]
+                        # only one endpoint is in the group
+                        if pairs[0][0] in self.var_groups[node] or pairs[1][0] in self.var_groups[node]:
+                            rel_funcs = self.getRelationFunc(eps[i], ep_pairs[i], dsplcmnt_info)
+                            # x and y
+                            for j in range(2):
+                                # skip first dimension
+                                if broken_pair and j == 0:
+                                    # print("skip pair: ", (pairs[j][0], pairs[j][1]))
+                                    continue
+                                pair_rel_funcs[(pairs[j][0], pairs[j][1])] = rel_funcs[j]
+            for key in pair_rel_funcs:
+                print(key, ", ", pair_rel_funcs[key])
             # print("over")
             # find relationship between the first of the group to the rest of a group, do search
             for node in same_slot_nodes:
@@ -344,16 +355,16 @@ class DsplcCalc:
                     # done with cur_var
                     done_vars.append(cur_var)
                 # print("pair_rel_funcs: " , pair_rel_funcs)
-            # print("explcit_ep_ids: ", explcit_ep_ids)
+            print("explcit_ep_ids: ", explcit_ep_ids)
 
             def roundPointFiveZero(num):
                 is_neg = num < 0
                 num_abs = abs(num)
                 frac, whole = math.modf(num_abs)
-                dec_part = 0
                 if abs(frac - 0.5) < frac and abs(frac - 0.5) < 1 - frac:
-                    dec_part = 0.5
-                num_abs = whole + dec_part
+                    num_abs = whole + 0.5
+                else:
+                    num_abs = round(num_abs)
                 if is_neg:
                     return -num_abs
                 return num_abs
@@ -372,7 +383,8 @@ class DsplcCalc:
                 vid_val = shape_info.bndry_verts_flat[vid][var_id % 2]
                 othr_vid_val = shape_info.bndry_verts_flat[vid][othr_var_id % 2]
                 adjusted_val = vid_val + val
-
+                # print("var_id: ", var_id)
+                # print("adjusted_val: ", adjusted_val)
                 # other dim already defined
                 if othr_var_id in var_values:
                     othr_adjsted_val = othr_vid_val + var_values[othr_var_id]
@@ -382,7 +394,8 @@ class DsplcCalc:
                         return math.floor(adjusted_val) + 0.5 - vid_val
                 else:
                     rounded_adjusted_val = roundPointFiveZero(adjusted_val)
-                return rounded_adjusted_val - vid_val
+                    # print("rounded_adjusted_val: ", rounded_adjusted_val)
+                    return rounded_adjusted_val - vid_val
 
             def getGroupId(var_groups, var_id):
                 for i in range(len(var_groups)):
@@ -400,7 +413,9 @@ class DsplcCalc:
                     var_value = - coeff_2 / coeff_1
                     group_id = getGroupId(obj.var_groups, key)
                     if (obj.group_closed[group_id]):
+                        # print("var_id: ", key, ", before var_value", var_value)
                         var_value = roundVarVal(obj.shape_info, var_values, var_value, key)
+                        # print("var_id: ", key, ", after var_value", var_value)
                     # print("var_value: ", var_value)
                     var_values[key] = var_value
 
@@ -415,22 +430,19 @@ class DsplcCalc:
 
             for node in same_slot_nodes:
                 # find relationships between broken pairs
-                if node % 2 == 1:
-                    continue
 
-                if self.group_closed[node]:
+                if self.group_closed[node] and node in self.order_calc.group_bndry_map:
                     broken_pair = self.order_calc.group_bndry_map[node]
+                    print("node: ", node)
+                    print("broken pair: ", broken_pair)
                     broken_pair_info = self.shape_info.path_pairs[broken_pair]
                     var_pairs = self.get_var_pair(broken_pair)
 
-                    print("node: ", node)
-                    print("broken pair: ", broken_pair)
                     # print ("var_pairs: ", var_pairs)
                     # start or end of pair?
-                    othr_ep_id = 1
-                    if var_pairs[1][0][0] in self.var_groups[node]:
-                        othr_ep_id = 0
-                    this_ep_id = int(not(othr_ep_id))
+                    this_ep_id = 1
+                    if var_pairs[0][0][0] in self.var_groups[node] or var_pairs[0][1][0] in self.var_groups[node]:
+                        this_ep_id = 0
                     # print("othr_ep_id: ", othr_ep_id)
                     # print("this_ep_id: ", this_ep_id)
 
@@ -464,7 +476,7 @@ class DsplcCalc:
                     for trnsfr_func_id in range(4):
                         trsfrm = trnsfrm_func_lib.trsfrm_funcs[trnsfr_func_id]
                         dsplcmnt = trnsfrm_func_lib.applyTrnsfrm(vid_1_loc, trsfrm) - vid_2_loc
-                        print("dsplcmnt: ", dsplcmnt)
+                        # print("dsplcmnt: ", dsplcmnt)
                         # if not (dsplcmnt[0].is_integer() and dsplcmnt[1].is_integer()):
                         #     continue
 
@@ -474,9 +486,9 @@ class DsplcCalc:
                             min_adj_sum = adj_sum
                             best_trnsfr_func_id = trnsfr_func_id
                             best_dsplcmnt = dsplcmnt
-                    print("before self.pair_bndry_dsplcmnt[broken_pair]: ", self.pair_bndry_dsplcmnt[broken_pair])
+                    # print("before self.pair_bndry_dsplcmnt[broken_pair]: ", self.pair_bndry_dsplcmnt[broken_pair])
                     self.pair_bndry_dsplcmnt[broken_pair] = [best_dsplcmnt, best_trnsfr_func_id]
-                    print("after self.pair_bndry_dsplcmnt[broken_pair]: ", self.pair_bndry_dsplcmnt[broken_pair])
+                    # print("after self.pair_bndry_dsplcmnt[broken_pair]: ", self.pair_bndry_dsplcmnt[broken_pair])
 
     def intrp_curve(self, cid):
         start_vid, end_vid = self.shape_info.getEPs(cid)

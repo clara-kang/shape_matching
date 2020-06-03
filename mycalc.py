@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 
 ns = "{http://www.w3.org/2000/svg}"
-tree = ET.parse("t_shirt.svg")
+tree = ET.parse("../bear_detached1.svg")
 root = tree.getroot()
 
 g = root.findall(ns + "g")[0]
@@ -47,13 +47,13 @@ for p_obj in path_objs:
         if p_name == "CubicBezier":
             cpts = np.zeros([4, 2])
             cpts[0][0] = curve.start.real
-            cpts[0][1] = curve.start.imag
+            cpts[0][1] = -curve.start.imag
             cpts[1][0] = curve.control1.real
-            cpts[1][1] = curve.control1.imag
+            cpts[1][1] = -curve.control1.imag
             cpts[2][0] = curve.control2.real
-            cpts[2][1] = curve.control2.imag
+            cpts[2][1] = -curve.control2.imag
             cpts[3][0] = curve.end.real
-            cpts[3][1] = curve.end.imag
+            cpts[3][1] = -curve.end.imag
 
             d_str = d_str + "M " + str(curve.start.real) + " " + str(curve.start.imag) + " "
             d_str = d_str + "C " + str(curve.control1.real) + " " + str(curve.control1.imag)
@@ -67,9 +67,9 @@ for p_obj in path_objs:
                 continue
             cpts = np.zeros([2, 2])
             cpts[0][0] = curve.start.real
-            cpts[0][1] = curve.start.imag
+            cpts[0][1] = -curve.start.imag
             cpts[1][0] = curve.end.real
-            cpts[1][1] = curve.end.imag
+            cpts[1][1] = -curve.end.imag
 
             d_str = d_str + "M " + str(curve.start.real) + " " + str(curve.start.imag) + " "
             d_str = d_str + "L " + str(curve.end.real) + " " + str(curve.end.imag)
@@ -111,14 +111,32 @@ html_file.write(html_str_2)
 html_file.close()
 
 # for t-shirt
-path_pairs = [(3, 11, False), (7, 15, True), (19, 27, False), (23, 31, True), (8, 28, True), (10, 30, True), (24, 12, True), (26, 14, True), (0, 18, False), (2, 16, False), (6, 20, False), (4, 22, False)]
+# path_pairs = [(3, 11, False), (7, 15, True), (19, 27, False), (23, 31, True), (8, 28, True), (10, 30, True), (24, 12, True), (26, 14, True), (0, 18, False), (2, 16, False), (6, 20, False), (4, 22, False)]
 # for cube
 # path_pairs = [(0, 1, False), (3, 4, False), (5, 2, False), (6, 13, False), (7, 10, False), (8, 9, False), (11, 12, False)]
+# for cube detached
+# path_pairs = [(0, 18, False), (1, 4, False), (2, 8, False), (3, 20, False), (5, 17, False), (6, 13, False), (7, 9, False), \
+#     (10, 12, False), (11, 21, False), (14, 16, False), (15, 22, False), (19, 23, False)]
+# for rotation test
+# path_pairs = [(0, 4, False)]
+# for bear
+# path_pairs = [(0, 8, True), (1, 9, True), (4, 12, True), (5, 13, True), (14, 15, False), (10, 11, False), (2, 3, False), (6, 7, False)]
+# for bear detached
+# path_pairs = [(6, 16, True), (7, 17, True), (1, 11, True), (2, 12, True), (10, 15, True), \
+#               (14, 19, True), (13, 18, True), (5, 0, True), (9, 4, True), (8, 3, True)]
+# for bear detached 1
+path_pairs = [(16, 20, False), (18, 24, False), (22, 27, False), (13, 8, False), (10, 4, False), \
+    (6, 2, False), (0, 14, True), (5, 19, True), (9, 23, True), (12, 26, True), \
+    (30, 34, False), (32, 38, False), (36, 41, False), (55, 50, False), (52, 46, False), (48, 44, False), \
+    (42, 28, True), (47, 33, True), (51, 37, True), (54, 40, True), \
+    (1, 29, True), (3, 31, True), (7, 35, True), (11, 39, True), (25, 53, True), (21, 49, True), (17, 45, True), \
+    (15, 43, True)]
+
 import math
 
 path_lens = np.array(path_lens)
 # at least have this many pts on one curve
-min_curve_pts_num = 8
+min_curve_pts_num = 6
 # desired segment length
 seg_len = np.amin(path_lens) / min_curve_pts_num
 
@@ -223,13 +241,13 @@ for i in range(len(shape_curve_ids)):
         shape_verts_num[i] += len(bndry_verts[curve_id])
 
 
-pts_file = open("bndry_pts_shirt.txt", "w")
-
-for curve_id in range(len(paths_cps)):
-    for v in bndry_verts[curve_id]:
-        pts_file.write(str(v[0]) + " " + str(v[1]) + "\n")
-
-pts_file.close()
+# pts_file = open("bndry_pts.txt", "w")
+#
+# for curve_id in range(len(paths_cps)):
+#     for v in bndry_verts[curve_id]:
+#         pts_file.write(str(v[0]) + " " + str(v[1]) + "\n")
+#
+# pts_file.close()
 
 
 import shape_info_lib
@@ -238,25 +256,50 @@ import order_calc_lib
 import write_lib
 
 shape_info = shape_info_lib.ShapesInfo(shape_curve_ids, bndry_verts, path_pairs)
+print("shape_info.bndry_c_verts_start: ", shape_info.bndry_c_verts_start)
+# print("9: ", shape_info.bndry_verts_flat[9])
 dsplc_bndry_calc = dsplc_bndry_lib.DsplcCalc(shape_info)
 dsplc_bndry_calc.get_pair_bndry_dsplcmnt()
-# print("dsplc_bndry_calc.pair_bndry_dsplcmnt: ", dsplc_bndry_calc.pair_bndry_dsplcmnt)
+
+print("dsplc_bndry_calc.pair_bndry_dsplcmnt: \n")
+for i in range(len(dsplc_bndry_calc.pair_bndry_dsplcmnt)):
+    print(path_pairs[i], ": ", dsplc_bndry_calc.pair_bndry_dsplcmnt[i])
 dsplc_bndry_calc.get_var_ids()
+print("dsplc_bndry_calc.variable_ids: ", dsplc_bndry_calc.variable_ids)
 dsplc_bndry_calc.group_vars()
+
+print("dsplc_bndry_calc.var_groups: ", dsplc_bndry_calc.var_groups)
 dsplc_bndry_calc.buildGroupConnGraph()
 # order_calc = order_calc_lib.OrderCalc(dsplc_bndry_calc.group_graph, dsplc_bndry_calc.group_closed)
 # order_calc.determine_order()
 dsplc_bndry_calc.getOrder()
+# print("dsplc_bndry_calc.group_graph: ", dsplc_bndry_calc.group_graph)
+
+print("group_bndry_map: ", dsplc_bndry_calc.order_calc.group_bndry_map)
+print("ordered_group: ", dsplc_bndry_calc.order_calc.ordered_group)
+print("dsplc_bndry_calc.group_closed: ", dsplc_bndry_calc.group_closed)
+
 dsplc_bndry_calc.calcVariables()
+
+print("dsplc_bndry_calc.pair_bndry_dsplcmnt: \n")
+for dsplcmnt in dsplc_bndry_calc.pair_bndry_dsplcmnt:
+    print(dsplcmnt)
+
 dsplc_bndry_calc.itrpRestOfCurves()
 
-write_lib.write_pts_out(shape_info, "bndry_pts_shirt.txt")
+write_lib.write_pts_out(shape_info, "bndry_pts.txt")
 write_lib.write_uvs_out(shape_info, "bndry_pts_uv.txt")
-write_lib.write_info_out(shape_info, dsplc_bndry_calc, "info_shirt.txt", seg_len, shape_verts_num)
+write_lib.write_info_out(shape_info, dsplc_bndry_calc, "info.txt", seg_len, shape_verts_num)
+
 # import matplotlib.pyplot as plt
 # plt.figure(figsize=(20,10))
-# plt.plot(shape_info.bndry_verts_flat[:,0], -shape_info.bndry_verts_flat[:,1], 'o')
-# plt.plot(shape_info.bndry_vert_uv[:,0], -shape_info.bndry_vert_uv[:,1], 'o')
+# plt.plot(shape_info.bndry_verts_flat[:,0], shape_info.bndry_verts_flat[:,1], 'o')
+# plt.plot(shape_info.bndry_vert_uv[:,0], shape_info.bndry_vert_uv[:,1], 'o')
+# # for i in range(len(shape_info.bndry_c_verts_start)-1):
+# #     plt.plot(shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i]:shape_info.bndry_c_verts_start[i+1],0], -shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i]:shape_info.bndry_c_verts_start[i+1],1], 'o')
+# #     plt.plot(shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i], 0], -shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i],1], 'o')
+# # v=87
+# # plt.plot(shape_info.bndry_vert_uv[v,0], -shape_info.bndry_vert_uv[v,1], 'o')
 # plt.axis('scaled')
 # plt.show()
 

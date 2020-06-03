@@ -44,7 +44,12 @@ def write_info_out(shape_info, dsplc_bndry_calc, file_name, seg_len, shape_verts
 
     info_file.write("\npair_bndry_dsplcmnt=")
     for p_dsplcmnt in dsplc_bndry_calc.pair_bndry_dsplcmnt:
-        info_file.write("[" + str(p_dsplcmnt[0][0]) + ", " + str(p_dsplcmnt[0][1]) + ", " + str(p_dsplcmnt[1]) + "]" + ", ")
+        func_type = p_dsplcmnt[1]
+        if func_type == 2:
+            func_type = 1
+        elif func_type == 1:
+            func_type = 2
+        info_file.write("[" + str(p_dsplcmnt[0][0]) + ", " + str(p_dsplcmnt[0][1]) + ", " + str(func_type) + "]" + ", ")
 
     info_file.write("\nshape_curve_ids=")
     for sc_id in shape_info.shape_curve_ids:
