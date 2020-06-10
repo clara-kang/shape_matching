@@ -50,6 +50,9 @@ class DsplcCalc:
         self.shape_info = shape_info
         self.variable_ids = {} # key: vid, value: variable id
         self.var_groups = []
+        self.vid_groups = []
+        self.vid_group_rel_ptrs = []
+        self.vid_pair_rels = {}
         self.group_closed = []
         self.var_values = {}
 
@@ -105,6 +108,17 @@ class DsplcCalc:
         trnsfrm_id = dsplcmnt_info[1]
         return trnsfrm_id
 
+    def get_var_from_vpair(self, vpair):
+        x_1 = self.variable_ids[vpair[0]]
+        x_2 = self.variable_ids[vpair[1]]
+        rel_id = self.vid_pair_rels[vpair]
+        # trnsfr func id
+        if self.pair_bndry_dsplcmnt[rel_id][1] == 1 or self.pair_bndry_dsplcmnt[rel_id][1] == 2:
+            var_pairs = [[x_1, x_2+1], [x_1+1, x_2]]
+        else:
+            var_pairs = [[x_1, x_2], [x_1+1, x_2+1]]
+        return var_pairs
+
     # get variable pair with curve pair
     def get_var_pair(self, pair_id):
         eps, ep_pairs = self.shape_info.get_ep_pair(pair_id) #[start1, end1], [start2, end2]
@@ -126,50 +140,99 @@ class DsplcCalc:
                 var_pairs[i] = [[x1_id, y2_id], [y1_id, x2_id]]
         return var_pairs
 
-    def get_group_id(self, var_id):
-        for i in range(len(self.var_groups)):
-            if var_id in self.var_groups[i]:
+    def get_group_id(self, var_id, group):
+        for i in range(len(group)):
+            if var_id in group[i]:
                 return i
         return -1
 
+    def spawn_var_group(self, vid_gid):
+        vid_group_rel_ptr = self.vid_group_rel_ptrs[vid_gid]
+        var_gs = []
+        def get_gid(var_id, var_gs):
+            for i in range(len(var_gs)):
+                if var_id in var_gs[i]:
+                    return i
+            return -1
+
+        for vpair in vid_group_rel_ptr:
+            x_1 = self.variable_ids[vpair[0]]
+            x_2 = self.variable_ids[vpair[1]]
+            rel_id = self.vid_pair_rels[vpair]
+            # trnsfr func id
+            if self.pair_bndry_dsplcmnt[rel_id][1] == 1 or self.pair_bndry_dsplcmnt[rel_id][1] == 2:
+                var_pairs = [[x_1, x_2+1], [x_1+1, x_2]]
+            else:
+                var_pairs = [[x_1, x_2], [x_1+1, x_2+1]]
+            for i in range(2):
+                var_pair = var_pairs[i]
+                g1_id = get_gid(var_pair[0], var_gs)
+                g2_id = get_gid(var_pair[1], var_gs)
+                if g1_id >=0 and g2_id < 0:
+                    var_gs[g1_id].append(var_pair[1])
+                # merge var_id to g2
+                elif g2_id >=0 and g1_id < 0:
+                    var_gs[g2_id].append(var_pair[0])
+                # both var are in groups
+                elif g1_id >=0 and g2_id >= 0:
+                    if g1_id != g2_id:
+                        # in different group, merge them
+                        var_gs[g1_id] = var_gs[g1_id] + var_gs[g2_id]
+                        var_gs.pop(g2_id)
+                # no relevant group exist
+                else:
+                    var_gs.append(var_pair)
+        # print("")
+        return var_gs
+
+    def group_vids(self):
+        for pair_id in range(len(self.shape_info.path_pairs)):
+            eps, ep_pairs = self.shape_info.get_ep_pair(pair_id)
+            # for start and end
+            for i in range(2):
+                vpair = (eps[i], ep_pairs[i])
+                g1_id = self.get_group_id(vpair[0], self.vid_groups)
+                g2_id = self.get_group_id(vpair[1], self.vid_groups)
+
+                self.vid_pair_rels[vpair] = pair_id
+                # merge var_pair_id to g1
+                if g1_id >=0 and g2_id < 0:
+                    self.vid_groups[g1_id].append(ep_pairs[i])
+                    self.vid_group_rel_ptrs[g1_id].append(vpair)
+
+                # merge var_id to g2
+                elif g2_id >=0 and g1_id < 0:
+                    self.vid_groups[g2_id].append(eps[i])
+                    self.vid_group_rel_ptrs[g2_id].append(vpair)
+                # both var are in groups
+                elif g1_id >=0 and g2_id >= 0:
+                    # if same group, this closes the loop
+                    self.vid_group_rel_ptrs[g1_id].append(vpair)
+                    if g1_id != g2_id:
+                        # in different group, merge them
+                        self.vid_groups[g1_id] = self.vid_groups[g1_id] + self.vid_groups[g2_id]
+                        self.vid_groups.pop(g2_id)
+                        self.vid_group_rel_ptrs[g1_id] = self.vid_group_rel_ptrs[g1_id] + self.vid_group_rel_ptrs[g2_id]
+                        self.vid_group_rel_ptrs.pop(g2_id)
+
+                # no relevant group exist
+                else:
+                    self.vid_groups.append([eps[i], ep_pairs[i]])
+                    self.vid_group_rel_ptrs.append([vpair])
+
+    def get_closed_groups(self):
+        self.group_closed = [None] * len(self.vid_groups)
+        for i in range(len(self.vid_groups)):
+            v_num = len(self.vid_groups[i])
+            if len(self.vid_group_rel_ptrs[i]) >= v_num:
+                self.group_closed[i] = True
+            else:
+                self.group_closed[i] = False
 
     def group_vars(self):
-        # group related vars
-        for pair_id in range(len(self.shape_info.path_pairs)):
-            var_pairs = self.get_var_pair(pair_id)
-            print("path pair: ", self.shape_info.path_pairs[pair_id])
-            print("var_pairs: ", var_pairs)
-            # start and end
-            for i in range(2):
-                pairs = var_pairs[i]
-
-                # two dim
-                for j in range(2):
-                    g1_id = self.get_group_id(pairs[j][0])
-                    g2_id = self.get_group_id(pairs[j][1])
-
-                    # merge var_pair_id to g1
-                    if g1_id >=0 and g2_id < 0:
-                        self.var_groups[g1_id].append(pairs[j][1])
-                    # merge var_id to g2
-                    elif g2_id >=0 and g1_id < 0:
-                        self.var_groups[g2_id].append(pairs[j][0])
-                    # both var are in groups
-                    elif g1_id >=0 and g2_id >= 0:
-                        # already in same group, a circle
-                        if g1_id == g2_id:
-                            self.group_closed[g1_id] = True
-                        # in different group, merge them
-                        else:
-                            print("merge: ", self.var_groups[g1_id], ", ", self.var_groups[g2_id])
-                            self.var_groups[g1_id] = self.var_groups[g1_id] + self.var_groups[g2_id]
-                            self.var_groups.pop(g2_id)
-                            self.group_closed.pop(g2_id)
-                    # no relevant group exist
-                    else:
-                        self.var_groups.append(pairs[j])
-                        self.group_closed.append(False)
-                print("self.var_groups: ", self.var_groups)
+        self.var_groups = [None] * len(self.vid_groups)
+        for gid in range(len(self.vid_groups)):
+            self.var_groups[gid] = self.spawn_var_group(gid)
 
     def buildGroupConnGraph(self):
         node_num = len(self.var_groups)
@@ -191,13 +254,13 @@ class DsplcCalc:
 
         for pair_id in range(len(self.shape_info.path_pairs)):
             var_pairs = self.get_var_pair(pair_id)
+            eps, ep_pairs = self.shape_info.get_ep_pair(pair_id)
 
-            # two dim
-            for j in range(2):
-                start_g_id = self.get_group_id(var_pairs[0][j][0])
-                end_g_id = self.get_group_id(var_pairs[1][j][0])
 
-                insert_to_graph(self.group_graph, start_g_id, end_g_id, pair_id)
+            start_g_id = self.get_group_id(eps[0], self.vid_groups)
+            end_g_id = self.get_group_id(eps[1], self.vid_groups)
+
+            insert_to_graph(self.group_graph, start_g_id, end_g_id, pair_id)
 
     def getOrder(self):
         self.order_calc = order_calc_lib.OrderCalc(self.group_graph, self.group_closed)
@@ -260,196 +323,228 @@ class DsplcCalc:
 
     def calcVariables(self):
         for same_slot_nodes in self.order_calc.ordered_group:
-            pair_rel_funcs = {}
-            explcit_ep_ids = {}
-
-            # print("self.pair_bndry_dsplcmnt: ", self.pair_bndry_dsplcmnt)
 
             for node in same_slot_nodes:
+                print("node: ", node)
+                pair_rel_funcs = {}
+                explcit_ep_ids = {}
+
                 # # if node is odd, then the relationships already found
                 # if node % 2 == 0:
                 # find pairwise var relationship
-                vars = self.var_groups[node]
-                outgoing_pair_ids = self.order_calc.getOutgoingPairs(node)
-                # print("node: ", node, ", outgoing_pair_ids: ", outgoing_pair_ids)
-                # process all outgoing pairs
-                # only break once for a group, in case both x, y are in same group
-                broken_pair = False
-                for pair_id in outgoing_pair_ids:
-                    # if this pair is to be skipped
+
+                skip_a_rel = False
+                for vpair in self.vid_group_rel_ptrs[node]:
+                    pair_id = self.vid_pair_rels[vpair]
+
+                    # check if this is broken pair
                     if self.group_closed[node] and node in self.order_calc.group_bndry_map \
                         and self.order_calc.group_bndry_map[node] == pair_id:
-                        broken_pair = True
-                        # continue
-                    else:
-                        broken_pair = False
-
-                    eps, ep_pairs = self.shape_info.get_ep_pair(pair_id)
-                    var_pairs = self.get_var_pair(pair_id)
-                    dsplcmnt_info = self.pair_bndry_dsplcmnt[pair_id]
-
-                    # start and end v
-                    for i in range(2):
-                        pairs = var_pairs[i]
-                        # only one endpoint is in the group
-                        if pairs[0][0] in self.var_groups[node] or pairs[1][0] in self.var_groups[node]:
-                            rel_funcs = self.getRelationFunc(eps[i], ep_pairs[i], dsplcmnt_info)
-                            # x and y
-                            for j in range(2):
-                                # skip first dimension
-                                if broken_pair and j == 0:
-                                    # print("skip pair: ", (pairs[j][0], pairs[j][1]))
-                                    continue
-                                pair_rel_funcs[(pairs[j][0], pairs[j][1])] = rel_funcs[j]
-            for key in pair_rel_funcs:
-                print(key, ", ", pair_rel_funcs[key])
-            # print("over")
-            # find relationship between the first of the group to the rest of a group, do search
-            for node in same_slot_nodes:
-                # first var id in group
-                cur_var = self.var_groups[node][0]
-                explct_var = cur_var
-
-                # create an entry in explcit_ep_ids
-                explcit_ep_ids[cur_var] = {}
-                next_vars = []
-                for i in range(1, len(self.var_groups[node])):
-                    rel_var = self.var_groups[node][i]
-                    # go through all pairs
-                    for var_pair in pair_rel_funcs:
-                        # directly related
-                        if cur_var in var_pair and rel_var in var_pair:
-                            # add to next vars to process
-                            next_vars.append(rel_var)
-                            # no need to invert rel_func
-                            if var_pair.index(rel_var) == 1:
-                                explcit_ep_ids[explct_var][rel_var] = pair_rel_funcs[var_pair]
+                            if len(self.var_groups[node]) == 1:
+                                skip_a_rel = True
+                            # if two chains, skip both rels
                             else:
-                                explcit_ep_ids[explct_var][rel_var] = inv_rel_func(pair_rel_funcs[var_pair])
-
-                done_vars = [cur_var]
-                while len(next_vars) > 0:
-                    cur_var = next_vars.pop(0)
-                    # go through all pairs
-                    for var_pair in pair_rel_funcs:
-                        if cur_var in var_pair:
-                            if var_pair.index(cur_var) == 0:
-                                rel_var = var_pair[1]
-                            else:
-                                rel_var = var_pair[0]
-
-                            # already processed this pair
-                            if rel_var in done_vars:
                                 continue
-                            else:
-                                # process rel_var later
+                    else:
+                        skip_a_rel = False
+
+                    var_pairs = self.get_var_from_vpair(vpair)
+                    dsplcmnt_info = self.pair_bndry_dsplcmnt[pair_id]
+                    rel_funcs = self.getRelationFunc(vpair[0], vpair[1], dsplcmnt_info)
+
+                    # x and y
+                    for i in range(2):
+                        if i == 0 and skip_a_rel:
+                            continue
+                        pairs = var_pairs[i]
+                        pair_rel_funcs[(pairs[0], pairs[1])] = rel_funcs[i]
+
+                # TODO:: only skip 1 or 2 to break the cycle
+
+                # for gid in range(len(self.var_groups[node])):
+                #     vars = self.var_groups[node][gid]
+                #     outgoing_pair_ids = self.order_calc.getOutgoingPairs(node)
+                #     # print("node: ", node, ", outgoing_pair_ids: ", outgoing_pair_ids)
+                #     # process all outgoing pairs
+                #     # only break once for a group, in case both x, y are in same group
+                #     broken_pair = False
+                #     for pair_id in outgoing_pair_ids:
+                #         # if this pair is to be skipped
+                #         if self.group_closed[node] and node in self.order_calc.group_bndry_map \
+                #             and self.order_calc.group_bndry_map[node] == pair_id:
+                #             broken_pair = True
+                #             # continue
+                #         else:
+                #             broken_pair = False
+                #
+                #         eps, ep_pairs = self.shape_info.get_ep_pair(pair_id)
+                #         var_pairs = self.get_var_pair(pair_id)
+                #         dsplcmnt_info = self.pair_bndry_dsplcmnt[pair_id]
+                #
+                #         # start and end v
+                #         for i in range(2):
+                #             pairs = var_pairs[i]
+                #             # only one endpoint is in the group
+                #             if pairs[0][0] in self.var_groups[node][gid] or pairs[1][0] in self.var_groups[node][gid]:
+                #                 rel_funcs = self.getRelationFunc(eps[i], ep_pairs[i], dsplcmnt_info)
+                #                 # x and y
+                #                 for j in range(2):
+                #                     # skip first dimension
+                #                     if broken_pair and j == 0:
+                #                         # print("skip pair: ", (pairs[j][0], pairs[j][1]))
+                #                         continue
+                #                     pair_rel_funcs[(pairs[j][0], pairs[j][1])] = rel_funcs[j]
+                for key in pair_rel_funcs:
+                    print(key, ", ", pair_rel_funcs[key])
+            # print("over")
+                # find relationship between the first of the group to the rest of a group, do search
+                for gid in range(len(self.var_groups[node])):
+                    # first var id in group
+                    cur_var = self.var_groups[node][gid][0]
+                    explct_var = cur_var
+
+                    # create an entry in explcit_ep_ids
+                    explcit_ep_ids[cur_var] = {}
+                    next_vars = []
+                    for i in range(1, len(self.var_groups[node][gid])):
+                        rel_var = self.var_groups[node][gid][i]
+                        # go through all pairs
+                        for var_pair in pair_rel_funcs:
+                            # directly related
+                            if cur_var in var_pair and rel_var in var_pair:
+                                # add to next vars to process
                                 next_vars.append(rel_var)
-                                if var_pair.index(cur_var) == 0:
-                                    rel_func = pair_rel_funcs[var_pair]
+                                # no need to invert rel_func
+                                if var_pair.index(rel_var) == 1:
+                                    explcit_ep_ids[explct_var][rel_var] = pair_rel_funcs[var_pair]
                                 else:
-                                    rel_func = inv_rel_func(pair_rel_funcs[var_pair])
+                                    explcit_ep_ids[explct_var][rel_var] = inv_rel_func(pair_rel_funcs[var_pair])
 
-                                # compose function
-                                cmpsd_func = compose_rel_func(explcit_ep_ids[explct_var][cur_var], rel_func)
-                                explcit_ep_ids[explct_var][rel_var] = cmpsd_func
-                    # done with cur_var
-                    done_vars.append(cur_var)
-                # print("pair_rel_funcs: " , pair_rel_funcs)
-            print("explcit_ep_ids: ", explcit_ep_ids)
+                    done_vars = [cur_var]
+                    while len(next_vars) > 0:
+                        cur_var = next_vars.pop(0)
+                        # go through all pairs
+                        for var_pair in pair_rel_funcs:
+                            if cur_var in var_pair:
+                                if var_pair.index(cur_var) == 0:
+                                    rel_var = var_pair[1]
+                                else:
+                                    rel_var = var_pair[0]
 
-            def roundPointFiveZero(num):
-                is_neg = num < 0
-                num_abs = abs(num)
-                frac, whole = math.modf(num_abs)
-                if abs(frac - 0.5) < frac and abs(frac - 0.5) < 1 - frac:
-                    num_abs = whole + 0.5
-                else:
-                    num_abs = round(num_abs)
-                if is_neg:
-                    return -num_abs
-                return num_abs
+                                # already processed this pair
+                                if rel_var in done_vars:
+                                    continue
+                                else:
+                                    # process rel_var later
+                                    next_vars.append(rel_var)
+                                    if var_pair.index(cur_var) == 0:
+                                        rel_func = pair_rel_funcs[var_pair]
+                                    else:
+                                        rel_func = inv_rel_func(pair_rel_funcs[var_pair])
 
-            # def roundZero(num):
-            #     is_neg = num < 0
-            #     num_abs = abs(num)
-            #     frac, whole = math.modf(num_abs)
-            #     return whole
-            def roundVarVal(shape_info, var_values, val, var_id):
-                vid = self.getVidFromVar(var_id)
-                if var_id % 2 == 1:
-                    othr_var_id = var_id - 1
-                else:
-                    othr_var_id = var_id + 1
-                vid_val = shape_info.bndry_verts_flat[vid][var_id % 2]
-                othr_vid_val = shape_info.bndry_verts_flat[vid][othr_var_id % 2]
-                adjusted_val = vid_val + val
-                # print("var_id: ", var_id)
-                # print("adjusted_val: ", adjusted_val)
-                # other dim already defined
-                if othr_var_id in var_values:
-                    othr_adjsted_val = othr_vid_val + var_values[othr_var_id]
-                    if math.modf(othr_adjsted_val)[0] == 0:
-                        return round(adjusted_val) - vid_val
-                    elif math.modf(othr_adjsted_val)[0] == 0.5:
-                        return math.floor(adjusted_val) + 0.5 - vid_val
-                else:
-                    rounded_adjusted_val = roundPointFiveZero(adjusted_val)
-                    # print("rounded_adjusted_val: ", rounded_adjusted_val)
-                    return rounded_adjusted_val - vid_val
+                                    # compose function
+                                    cmpsd_func = compose_rel_func(explcit_ep_ids[explct_var][cur_var], rel_func)
+                                    explcit_ep_ids[explct_var][rel_var] = cmpsd_func
+                        # done with cur_var
+                        done_vars.append(cur_var)
 
-            def getGroupId(var_groups, var_id):
-                for i in range(len(var_groups)):
-                    if var_id in var_groups[i]:
-                        return i
-                return -1
+                print("explcit_ep_ids: ", explcit_ep_ids)
 
-            def cal_vars(obj, var_values, explcit_ep_ids):
-                # calculate the explicit vars
-                for key in explcit_ep_ids:
-                    coeff_1 = len(explcit_ep_ids[key]) + 1
-                    coeff_2 = 0
-                    for rel_var in explcit_ep_ids[key]:
-                        coeff_2 += explcit_ep_ids[key][rel_var][1] * explcit_ep_ids[key][rel_var][0]
-                    var_value = - coeff_2 / coeff_1
-                    group_id = getGroupId(obj.var_groups, key)
-                    if (obj.group_closed[group_id]):
-                        # print("var_id: ", key, ", before var_value", var_value)
-                        var_value = roundVarVal(obj.shape_info, var_values, var_value, key)
-                        # print("var_id: ", key, ", after var_value", var_value)
-                    # print("var_value: ", var_value)
-                    var_values[key] = var_value
+                def roundPointFiveZero(num):
+                    is_neg = num < 0
+                    num_abs = abs(num)
+                    frac, whole = math.modf(num_abs)
+                    if abs(frac - 0.5) < frac and abs(frac - 0.5) < 1 - frac:
+                        num_abs = whole + 0.5
+                    else:
+                        num_abs = round(num_abs)
+                    if is_neg:
+                        return -num_abs
+                    return num_abs
 
-                # calculate the implicit vars
-                for key in explcit_ep_ids:
-                    for rel_var in explcit_ep_ids[key]:
-                        var_value = var_values[key] *  explcit_ep_ids[key][rel_var][0] + explcit_ep_ids[key][rel_var][1]
-                        var_values[rel_var] = var_value
+                # def roundZero(num):
+                #     is_neg = num < 0
+                #     num_abs = abs(num)
+                #     frac, whole = math.modf(num_abs)
+                #     return whole
+                def roundVarVal(shape_info, var_values, val, var_id):
+                    vid = self.getVidFromVar(var_id)
+                    if var_id % 2 == 1:
+                        othr_var_id = var_id - 1
+                    else:
+                        othr_var_id = var_id + 1
+                    vid_val = shape_info.bndry_verts_flat[vid][var_id % 2]
+                    othr_vid_val = shape_info.bndry_verts_flat[vid][othr_var_id % 2]
+                    adjusted_val = vid_val + val
+                    # print("var_id: ", var_id)
+                    # print("adjusted_val: ", adjusted_val)
+                    # other dim already defined
+                    if othr_var_id in var_values:
+                        othr_adjsted_val = othr_vid_val + var_values[othr_var_id]
+                        if math.modf(othr_adjsted_val)[0] == 0:
+                            return round(adjusted_val) - vid_val
+                        elif math.modf(othr_adjsted_val)[0] == 0.5:
+                            return math.floor(adjusted_val) + 0.5 - vid_val
+                    else:
+                        rounded_adjusted_val = roundPointFiveZero(adjusted_val)
+                        # print("rounded_adjusted_val: ", rounded_adjusted_val)
+                        return rounded_adjusted_val - vid_val
 
-            cal_vars(self, self.var_values, explcit_ep_ids)
-            # print("self.var_values: ", self.var_values)
+                def getGroupId(var_groups, var_id):
+                    for i in range(len(var_groups)):
+                        for j in range(len(var_groups[i])):
+                            if var_id in var_groups[i][j]:
+                                return i
+                    return -1
 
-            for node in same_slot_nodes:
+                def cal_vars(obj, var_values, explcit_ep_ids):
+                    # calculate the explicit vars
+                    for key in explcit_ep_ids:
+                        coeff_1 = len(explcit_ep_ids[key]) + 1
+                        coeff_2 = 0
+                        for rel_var in explcit_ep_ids[key]:
+                            coeff_2 += explcit_ep_ids[key][rel_var][1] * explcit_ep_ids[key][rel_var][0]
+                        var_value = - coeff_2 / coeff_1
+                        group_id = getGroupId(obj.var_groups, key)
+                        if (obj.group_closed[group_id]):
+                            # print("var_id: ", key, ", before var_value", var_value)
+                            var_value = roundVarVal(obj.shape_info, var_values, var_value, key)
+                            # print("var_id: ", key, ", after var_value", var_value)
+                        # print("var_value: ", var_value)
+                        var_values[key] = var_value
+
+                    # calculate the implicit vars
+                    for key in explcit_ep_ids:
+                        for rel_var in explcit_ep_ids[key]:
+                            var_value = var_values[key] *  explcit_ep_ids[key][rel_var][0] + explcit_ep_ids[key][rel_var][1]
+                            var_values[rel_var] = var_value
+
+                cal_vars(self, self.var_values, explcit_ep_ids)
+                # print("self.var_values: ", self.var_values)
+
                 # find relationships between broken pairs
-
                 if self.group_closed[node] and node in self.order_calc.group_bndry_map:
                     broken_pair = self.order_calc.group_bndry_map[node]
                     print("node: ", node)
                     print("broken pair: ", broken_pair)
                     broken_pair_info = self.shape_info.path_pairs[broken_pair]
-                    var_pairs = self.get_var_pair(broken_pair)
+                    # var_pairs = self.get_var_pair(broken_pair)
+                    eps, ep_pairs = self.shape_info.get_ep_pair(broken_pair)
 
-                    # print ("var_pairs: ", var_pairs)
                     # start or end of pair?
                     this_ep_id = 1
-                    if var_pairs[0][0][0] in self.var_groups[node] or var_pairs[0][1][0] in self.var_groups[node]:
+                    othr_ep_id = 0
+                    if eps[0] in self.vid_groups[node]:
+                    # if var_pairs[0][0][0] in self.var_groups[node][gid] or var_pairs[0][1][0] in self.var_groups[node][gid]:
                         this_ep_id = 0
-                    # print("othr_ep_id: ", othr_ep_id)
-                    # print("this_ep_id: ", this_ep_id)
+                        othr_ep_id = 1
+                    print("othr_ep_id: ", othr_ep_id)
+                    print("this_ep_id: ", this_ep_id)
 
-                    vid_1 = self.getVidFromVar(var_pairs[this_ep_id][0][0])
-                    vid_2 = self.getVidFromVar(var_pairs[this_ep_id][0][1])
-                    # print("vid_1: ", vid_1)
-                    # print("vid_2: ", vid_2)
+                    vid_1 = eps[this_ep_id]
+                    vid_2 = ep_pairs[this_ep_id]
+                    print("vid_1: ", vid_1)
+                    print("vid_2: ", vid_2)
                     vid_1_dsplcmnt = np.array([self.var_values[self.variable_ids[vid_1]], self.var_values[self.variable_ids[vid_1]+1] ])
                     vid_2_dsplcmnt = np.array([self.var_values[self.variable_ids[vid_2]], self.var_values[self.variable_ids[vid_2]+1] ])
 
@@ -488,7 +583,14 @@ class DsplcCalc:
                             best_dsplcmnt = dsplcmnt
                     # print("before self.pair_bndry_dsplcmnt[broken_pair]: ", self.pair_bndry_dsplcmnt[broken_pair])
                     self.pair_bndry_dsplcmnt[broken_pair] = [best_dsplcmnt, best_trnsfr_func_id]
-                    # print("after self.pair_bndry_dsplcmnt[broken_pair]: ", self.pair_bndry_dsplcmnt[broken_pair])
+                    print("after self.pair_bndry_dsplcmnt[broken_pair]: ", self.pair_bndry_dsplcmnt[broken_pair])
+                    # get the other group affected
+                    othr_group_id = self.get_group_id(eps[othr_ep_id], self.vid_groups)
+                    self.var_groups[othr_group_id] = self.spawn_var_group(othr_group_id)
+                    print("new var groups: ")
+                    for i in range(len(self.var_groups)):
+                        print(i, ": ", self.var_groups[i])
+
 
     def intrp_curve(self, cid):
         start_vid, end_vid = self.shape_info.getEPs(cid)

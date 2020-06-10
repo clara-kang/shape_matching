@@ -131,6 +131,9 @@ path_pairs = [(16, 20, False), (18, 24, False), (22, 27, False), (13, 8, False),
     (42, 28, True), (47, 33, True), (51, 37, True), (54, 40, True), \
     (1, 29, True), (3, 31, True), (7, 35, True), (11, 39, True), (25, 53, True), (21, 49, True), (17, 45, True), \
     (15, 43, True)]
+# for bear detached 2
+# path_pairs = [(2, 16, True), (3, 17, True), (4, 18, True), (11, 24, True), (10, 23, True), (9, 22, True), (8, 21, True), \
+#                   (1, 7, True), (0, 13, True), (5, 12, True), (15, 20, True), (14, 26, True), (19, 25, True)]
 
 import math
 
@@ -266,10 +269,20 @@ for i in range(len(dsplc_bndry_calc.pair_bndry_dsplcmnt)):
     print(path_pairs[i], ": ", dsplc_bndry_calc.pair_bndry_dsplcmnt[i])
 dsplc_bndry_calc.get_var_ids()
 print("dsplc_bndry_calc.variable_ids: ", dsplc_bndry_calc.variable_ids)
+
+dsplc_bndry_calc.group_vids()
+dsplc_bndry_calc.get_closed_groups()
+print("dsplc_bndry_calc.vid_groups: ", dsplc_bndry_calc.vid_groups)
+print("dsplc_bndry_calc.vid_group_rel_ptrs: ", dsplc_bndry_calc.vid_group_rel_ptrs)
+
 dsplc_bndry_calc.group_vars()
 
 print("dsplc_bndry_calc.var_groups: ", dsplc_bndry_calc.var_groups)
+
+
 dsplc_bndry_calc.buildGroupConnGraph()
+print("dsplc_bndry_calc.group_graph: ", dsplc_bndry_calc.group_graph)
+
 # order_calc = order_calc_lib.OrderCalc(dsplc_bndry_calc.group_graph, dsplc_bndry_calc.group_closed)
 # order_calc.determine_order()
 dsplc_bndry_calc.getOrder()
@@ -291,17 +304,17 @@ write_lib.write_pts_out(shape_info, "bndry_pts.txt")
 write_lib.write_uvs_out(shape_info, "bndry_pts_uv.txt")
 write_lib.write_info_out(shape_info, dsplc_bndry_calc, "info.txt", seg_len, shape_verts_num)
 
-# import matplotlib.pyplot as plt
-# plt.figure(figsize=(20,10))
-# plt.plot(shape_info.bndry_verts_flat[:,0], shape_info.bndry_verts_flat[:,1], 'o')
-# plt.plot(shape_info.bndry_vert_uv[:,0], shape_info.bndry_vert_uv[:,1], 'o')
-# # for i in range(len(shape_info.bndry_c_verts_start)-1):
-# #     plt.plot(shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i]:shape_info.bndry_c_verts_start[i+1],0], -shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i]:shape_info.bndry_c_verts_start[i+1],1], 'o')
-# #     plt.plot(shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i], 0], -shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i],1], 'o')
-# # v=87
-# # plt.plot(shape_info.bndry_vert_uv[v,0], -shape_info.bndry_vert_uv[v,1], 'o')
-# plt.axis('scaled')
-# plt.show()
+import matplotlib.pyplot as plt
+plt.figure(figsize=(20,10))
+plt.plot(shape_info.bndry_verts_flat[:,0], shape_info.bndry_verts_flat[:,1], 'o')
+plt.plot(shape_info.bndry_vert_uv[:,0], shape_info.bndry_vert_uv[:,1], 'o')
+# for i in range(len(shape_info.bndry_c_verts_start)-1):
+#     plt.plot(shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i]:shape_info.bndry_c_verts_start[i+1],0], -shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i]:shape_info.bndry_c_verts_start[i+1],1], 'o')
+#     plt.plot(shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i], 0], -shape_info.bndry_vert_uv[shape_info.bndry_c_verts_start[i],1], 'o')
+# v=87
+# plt.plot(shape_info.bndry_vert_uv[v,0], -shape_info.bndry_vert_uv[v,1], 'o')
+plt.axis('scaled')
+plt.show()
 
 # print("shape_info.path_pair: ", shape_info.path_pairs)
 # print("group_bndry_map: ", order_calc.group_bndry_map)
