@@ -3,16 +3,20 @@ import numpy as np
 class ShapesInfo:
 
     def flatten_bndry_verts(self):
-        self.bndry_verts_flat = []
+        # print("start flatten")
+        self.bndry_verts_flat = np.zeros([0, 2])
         self.bndry_c_verts_start = np.zeros(len(self.bndry_verts))
         cnt = 0
         for curve_id in range(len(self.bndry_verts)):
             curve_verts = self.bndry_verts[curve_id]
-            self.bndry_verts_flat.extend(curve_verts)
+            for v in curve_verts:
+                self.bndry_verts_flat = np.append(self.bndry_verts_flat, [v], axis = 0)
             self.bndry_c_verts_start[curve_id] = cnt
             cnt += len(curve_verts)
 
-        self.bndry_verts_flat = np.array(self.bndry_verts_flat)
+        # print("bndry_verts_flat: ", self.bndry_verts_flat)
+        # self.bndry_verts_flat = np.array(self.bndry_verts_flat)
+        # print("bndry_verts_flat: ", self.bndry_verts_flat)
         self.bndry_c_verts_start = self.bndry_c_verts_start.astype(int)
 
     def  __init__(self, shape_curve_ids, bndry_verts, path_pairs):
@@ -20,7 +24,7 @@ class ShapesInfo:
         self.bndry_verts = bndry_verts
         self.path_pairs = path_pairs
         self.flatten_bndry_verts()
-        self.bndry_vert_uv = bndry_vert_uv = np.copy(self.bndry_verts_flat)
+        self.bndry_vert_uv = np.copy(self.bndry_verts_flat)
 
     def getNextCurveInShape(self, c_id):
         for shape_id in range(len(self.shape_curve_ids)):
@@ -45,7 +49,11 @@ class ShapesInfo:
         curve_vid_2 = np.append(curve_vid_2, self.bndry_c_verts_start[self.getNextCurveInShape(c_id2)]).astype(int)
 
         if not (pair_info[2]):
-            curve_vid_2 = np.flip(curve_vid_2)
+            # curve_vid_2.reverse()
+            curve_vid_2_list = curve_vid_2.tolist()
+            curve_vid_2_list.reverse()
+            curve_vid_2 = np.array(curve_vid_2_list)
+            # curve_vid_2 = np.flip(curve_vid_2)
 
         return (curve_vid_1, curve_vid_2)
 

@@ -18,6 +18,8 @@ def getDsplcmntAdjSumSquare(shape_info, pair_info, trnsfrm_func_id):
     curve_vid_1, curve_vid_2 = shape_info.getPairCurveVids(pair_info)
     curve_verts_num = len(curve_vid_1)
 
+    # print("curve_vid_1: ", curve_vid_1)
+    # print("curve_vid_2: ", curve_vid_2)
     dsplcmentArray = getDsplcmentArray(shape_info, curve_vid_1, curve_vid_2, trnsfrm_func)
     # calculate average displacement
     avg_displcmt = np.sum(dsplcmentArray, axis=0) / curve_verts_num
@@ -65,6 +67,7 @@ class DsplcCalc:
             dsplcmntSum_min = np.Inf
             trnsfrm_func_id = -1
 
+            # print("path_pair: ", path_pair)
             # try each transfer function
             for i in range(len(trnsfrm_func_lib.trsfrm_funcs)):
                 avg_displcmt, dsplcmntSum = getDsplcmntAdjSumSquare(self.shape_info, path_pair, i)
