@@ -1,10 +1,12 @@
 import bpy
 import bmesh
 import numpy as np
+import math
 
-bpy.data.objects['Sphere'].select = True
-bpy.context.scene.objects.active = bpy.data.objects['Sphere']
-me = bpy.data.objects['Sphere'].data
+# bpy.data.objects['Sphere'].select = True
+# bpy.context.scene.objects.active = bpy.data.objects['Sphere']
+# me = bpy.data.objects['Sphere'].data
+me = bpy.context.object.data
 
 # Get a BMesh representation
 # bm = bmesh.new()   # create an empty BMesh
@@ -14,7 +16,7 @@ bm = bmesh.from_edit_mesh(me)   # fill it in from a Mesh
 verts_on_bndrys = set()
 
 for e in bm.edges:
-    if e.seam:
+    if e.seam or e.is_boundary:
         verts_on_bndrys.add(e.verts[0])
         verts_on_bndrys.add(e.verts[1])
 
@@ -35,14 +37,13 @@ for v in bm.verts:
         vert_2_index[v] = cnt
         cnt += 1
 
-def getVnb(v):
-    global bm
-    nb_edges = v.link_edges
-    nb_vs = set()
-    for e in nb_edges:
+def getVnb(v, nb_edges):
+    nb_vs = []
+    for i in range(len(nb_edges)):
+        e = nb_edges[i]
         for i in range(2):
             if e.verts[i] != v:
-                nb_vs.add(e.verts[i])
+                nb_vs.append(e.verts[i])
     return nb_vs
 
 uv_lay = bm.loops.layers.uv.active
@@ -66,19 +67,41 @@ def getPid(v):
     nb_fs = v.link_faces
     return nb_fs[0].material_index
 
+def getWeight(e):
+    weight = 0
+    nb_fs = e.link_faces
+    for nb_f in nb_fs:
+        for loop in nb_f.loops:
+            if loop.vert not in e.verts:
+                angle = loop.calc_angle()
+                weight += 1 / math.tan(angle)
+    return weight
+
+def getNormalizedWeights(nb_edges):
+    weights = []
+    for nb_id in range(len(nb_edges)):
+        weight = getWeight(nb_edges[nb_id])
+        weights.append(weight)
+    weights = np.array(weights)
+    weights = weights / np.sum(weights)
+    return weights
+
 # build M
 for i in range(N):
     v = index_2_vert[i]
-    nb_vs = getVnb(v)
-    if i == 0:
-        print("len(nb_vs)", len(nb_vs))
-
-    weight = 1 / len(nb_vs)
+    nb_edges = v.link_edges
+    nb_vs = getVnb(v, nb_edges)
+    weights = getNormalizedWeights(nb_edges)
+    # if i == 0:
+    #     print("len(nb_vs)", len(nb_vs))
     pid = getPid(v)
 
     # self
     M[i][i] = 1
-    for nb_v in nb_vs:
+    for nb_id in range(len(nb_vs)):
+        nb_v = nb_vs[nb_id]
+        weight = weights[nb_id]
+        print("weight: ", weight)
         if not (nb_v in verts_on_bndrys):
             nb_idx = vert_2_index[nb_v]
             # print("nb_idx: ", nb_idx)

@@ -49,11 +49,11 @@ def mark_edge(edge, id):
     mark_v(loc, id)
 
 
-bpy.data.objects['Sphere'].select = True
-bpy.context.scene.objects.active = bpy.data.objects['Sphere']
-bpy.ops.object.mode_set(mode = 'OBJECT')
+# bpy.data.objects['Tee_S'].select = True
+# bpy.context.scene.objects.active = bpy.data.objects['Tee_S']
+# bpy.ops.object.mode_set(mode = 'OBJECT')
 
-me = bpy.data.objects['Sphere'].data
+me = bpy.context.object.data
 
 patch_edges = {}
 patch_ordr_edges = {}
@@ -62,7 +62,7 @@ boundaries = []
 bndry_patch_pairs = []
 edge_assigned = {}
 bndry_verts = []
-bndry_verts_ids = {}
+bndry_verts_ids = []
 shape_curve_ids = []
 # vid where a bndry starts [[start1, start2, start3], [start1, start2, start3, start4],...]
 bndry_start_ids = {}
@@ -80,7 +80,7 @@ def insertToPatchEdges(idx, data):
 
 # the boundaries for each patch, unordered
 for e in bm.edges:
-    if e.seam:
+    if e.seam or e.is_boundary:
         # print("e: ", e)
         for adjFace in e.link_faces:
             insertToPatchEdges(adjFace.material_index, e)
@@ -147,7 +147,7 @@ def getBndryStart(pid, start_eid):
 # get bndry vertices
 uv_lay = bm.loops.layers.uv.active
 
-size_multiplier = 50
+size_multiplier = 10
 def getVertUV(pid, vid):
     global patch_ordr_edges, patch_ordr_verts, uv_lay
     e = patch_ordr_edges[pid][vid]
@@ -162,8 +162,8 @@ def getVertUV(pid, vid):
 
 def setVertUV(pid, vid, uv):
     global patch_ordr_edges, patch_ordr_verts
-    e = patch_ordr_edges[pid][vid]
-    link_faces = e.link_faces
+    v = patch_ordr_verts[pid][vid]
+    link_faces = v.link_faces
     for face in link_faces:
         # get the face inside the patch
         if face.material_index == pid:
@@ -177,6 +177,10 @@ pids = []
 
 for pid in patch_ordr_edges:
     pids.append(pid)
+
+# for pid in pids:
+#     print("len of ", pid, ": ", len(patch_ordr_verts[pid]))
+# print("pids: ", pids)
 
 # get bndry_start_ids
 for pid in pids:
@@ -196,16 +200,29 @@ for pid in pids:
         start_vid = bndry_start_ids[pid][i]
         next_start_vid = bndry_start_ids[pid][(i + 1)%(len(bndry_start_ids[pid]))]
         this_bndry_verts = []
+        this_bndry_vert_ids = []
         j = start_vid
         while True:
             this_bndry_verts.append(getVertUV(pid, j))
+            this_bndry_vert_ids.append(j)
             j = (j + 1) % len(patch_ordr_verts[pid])
             if j == next_start_vid:
                 break
+
+        # make it straight
+        # end_uv = getVertUV(pid, next_start_vid)
+        # for i in range(len(this_bndry_verts)):
+        #     t = i / len(this_bndry_verts)
+        #     for dim in range(2):
+        #         this_bndry_verts[i][dim] = (1 - t) * this_bndry_verts[0][dim] + t * end_uv[dim]
         bndry_verts.append(this_bndry_verts)
+        bndry_verts_ids.append(this_bndry_vert_ids)
 
 # for id in range(len(bndry_verts)):
 #     print(id, " ", "bndry lens: ", len(bndry_verts[id]))
+
+for id in range(len(bndry_verts_ids)):
+    print(id, ": ", bndry_verts_ids[id])
 
 # print("bndry_verts: ", bndry_verts)
 # get shape_curve_ids
@@ -243,6 +260,18 @@ def getBndryId(pid, which_bndry):
             break
     return cnt + which_bndry
 
+# def whichBndry(pid, v):
+#     global shape_curve_ids, patch_ordr_verts
+#     shape_bndry_ids = shape_curve_ids[pid]
+#     vid = patch_ordr_verts[pid].index(v)
+#     for bndry_id in shape_bndry_ids:
+#         # print("bndry_id: ", bndry_id)
+#         # print("bndry_verts_ids[bndry_id]: ", bndry_verts_ids[bndry_id])
+#         if vid in bndry_verts_ids[bndry_id]:
+#             # print("bndry_id: ", bndry_id)
+#             same_dir = ( bndry_verts_ids[bndry_id].index(vid) == 2 )
+#             return ( bndry_id, same_dir )
+
 def whichBndry(pid, v):
     global patch_ordr_edges, bndry_start_ids
 
@@ -277,6 +306,7 @@ def path_used(bndry_id):
             return True
     return False
 
+skip_times = 0
 # # get bndry pairs
 for pid in pids:
     for i in range(len(bndry_start_ids[pid])):
@@ -287,11 +317,17 @@ for pid in pids:
         second_vid = ( bndry_start_ids[pid][i] + 1 ) % (len(patch_ordr_verts[pid]))# also second vid
         # mark_v(patch_ordr_verts[pid][second_vid].co, "1")
         adj_pid = getConnPid(pid, second_vid)
+        if adj_pid < 0:
+            skip_times += 1
+            continue
+        print("adj_pid: ", adj_pid)
         res = whichBndry(adj_pid, patch_ordr_verts[pid][second_vid])
         adj_bndry_id = getBndryId(adj_pid, res[0])
+        # pair_info = (bndry_id, res[0], res[1])
         pair_info = (bndry_id, adj_bndry_id, res[1])
         path_pairs.append(pair_info)
 
+print("skip_times: ", skip_times)
 print("path_pairs: ", path_pairs)
 
 # for pid in [0, 9]:
@@ -307,7 +343,7 @@ print("path_pairs: ", path_pairs)
 #             if j == next_v:
 #                 break
 
-#
+
 
 # print("shape_curve_ids: ", shape_curve_ids)
 bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath)
@@ -330,12 +366,22 @@ dsplc_bndry_calc.itrpRestOfCurves()
 
 #=========
 cnt = 0
+# for pid in pids:
+#     for i in range(len(patch_ordr_verts[pid])):
+#         # print("before: ", shape_info.bndry_verts_flat[cnt])
+#         # print("after: ", shape_info.bndry_vert_uv[cnt])
+#         setVertUV(pid, i, shape_info.bndry_vert_uv[cnt])
+#         cnt += 1
+
 for pid in pids:
-    for i in range(len(patch_ordr_verts[pid])):
-        # print("before: ", shape_info.bndry_verts_flat[cnt])
-        # print("after: ", shape_info.bndry_vert_uv[cnt])
-        setVertUV(pid, i, shape_info.bndry_vert_uv[cnt])
+    start_vid = bndry_start_ids[pid][0]
+    j = start_vid
+    while True:
+        setVertUV(pid, j, shape_info.bndry_vert_uv[cnt])
         cnt += 1
+        j = (j + 1) % len(patch_ordr_verts[pid])
+        if j == start_vid:
+            break
 write_lib.write_pts_out(shape_info, "bndry_pts.txt")
 write_lib.write_uvs_out(shape_info, "bndry_pts_uv.txt")
 
