@@ -345,11 +345,12 @@ write_pts_out(bndry_verts, "bndry_pts.txt")
 # bpy.ops.wm.save_as_mainfile(filepath=bpy.data.filepath)
 # ================
 
-import get_polygons
+import get_polygons_2
 # import opt_angles_2
 import subprocess
+import numpy as np
 
-polygon = get_polygons.Polygons(bndry_verts, shape_curve_ids, path_pairs)
+polygon = get_polygons_2.Polygons(bndry_verts, shape_curve_ids, path_pairs)
 polygon.getPolyVerts()
 polygon.writeVertsOut("poly_verts.txt")
 
@@ -364,18 +365,31 @@ best_it = 0
 
 for time in range(1):
     # polygon.getShapeRotation()
-    if time == 0:
-        polygon.resetShapeRotations()
-    else:
-        polygon.getRandomShapeRotations()
-    polygon.rotateShapes()
+    # if time == 0:
+    #     polygon.resetShapeRotations()
+    # else:
+    #     polygon.getRandomShapeRotations()
+    # polygon.rotateShapes()
     polygon.getPolyVecs()
     polygon.getAngles()
+    polygon.getNormCenterSegDist()
     polygon.getPairAngleDiff()
     polygon.writeOut()
-    polygon.writeOut2()
-    polygon.writeVertsOut("poly_verts_rot.txt")
+    polygon.writeVertsOut("poly_verts.txt")
 
+    # subprocess.call(['C:\\gurobi902\\win64\\python37\\bin\\python.exe', 'opt_angles_5.py'])
+    polygon.readInRotation()
+    polygon.rotateShapes()
+    polygon.writeVertsOut("poly_verts_rot.txt")
+    polygon.getPolyVecs()
+    polygon.getAngles()
+#     # polygon.getRels()
+    polygon.getPairAngleDiff()
+#     # print("polygon.angles_flat: ",polygon.angles_flat )
+#     # print("polygon.optimized_angles - polygon.angles_flat: ",np.array(polygon.optimized_angles) - np.array(polygon.angles_flat))
+#
+    polygon.writeOut2()
+#     polygon.writeVertsOut("poly_verts_rot.txt")
     subprocess.call(['C:\\gurobi902\\win64\\python37\\bin\\python.exe', 'opt_verts_4.py'])
 
     # get objective value
@@ -395,16 +409,11 @@ print("best_it: ", best_it)
 print("polygon.shape_rotation: ", polygon.shape_rotation)
 polygon.optimized_verts = best_verts
 polygon.intrpCurve()
-# opt = opt_angles_2(len(polygon.poly_vecs_flat), polygon.angle_diffs_constr_dic, polygon.angle_diffs_dic)
+
+# polygon.optimized_verts = get_polygons_2.flatten_arr(polygon.poly_verts)
+# polygon.intrpCurve()
 #=========
 cnt = 0
-# # for pid in pids:
-# #     for i in range(len(patch_ordr_verts[pid])):
-# #         # print("before: ", shape_info.bndry_verts_flat[cnt])
-# #         # print("after: ", shape_info.bndry_vert_uv[cnt])
-# #         setVertUV(pid, i, shape_info.bndry_vert_uv[cnt])
-# #         cnt += 1
-#
 for pid in pids:
     start_vid = bndry_start_ids[pid][0]
     j = start_vid
