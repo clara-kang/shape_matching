@@ -377,7 +377,7 @@ for time in range(1):
     polygon.writeOut()
     polygon.writeVertsOut("poly_verts.txt")
 
-    # subprocess.call(['C:\\gurobi902\\win64\\python37\\bin\\python.exe', 'opt_angles_5.py'])
+    subprocess.call(['C:\\gurobi902\\win64\\python37\\bin\\python.exe', 'opt_angles_5.py'])
     polygon.readInRotation()
     polygon.rotateShapes()
     polygon.writeVertsOut("poly_verts_rot.txt")

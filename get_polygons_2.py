@@ -61,8 +61,6 @@ class Polygons:
         self.poly_vecs_flat = []
         self.angles = []
         self.angles_flat = []
-        self.angle_diffs = []
-        self.angle_diffs_dic = {}
         self.angle_diffs_constr_dic = {}
 
     def getCid(self, shape_id, which_id):
@@ -86,44 +84,29 @@ class Polygons:
             for cid in self.shape_curve_ids[i]:
                 self.poly_verts[-1].append(np.array(self.bndry_verts[cid][0]))
 
+    def applyMultiplier(self, multiplier):
+        for i in range(len(self.bndry_verts)):
+            for j in range(len(self.bndry_verts[i])):
+                self.bndry_verts[i][j] *= multiplier
+
     def writeVertsOut(self, file_name):
         f = open(file_name, "w")
-        for shape_id in range(len(self.shape_curve_ids)):
-            # print(shape_id, ": ", self.poly_verts[shape_id])
-            for v in self.poly_verts[shape_id]:
-                f.write(str(v[0]) + " " + str(v[1]) + "\n")
+        for cid in range(len(self.bndry_verts)):
+            v = np.array(self.bndry_verts[cid][0])
+            f.write(str(v[0]) + " " + str(v[1]) + "\n")
         f.close()
 
     def getPolyVecs(self):
         self.poly_vecs = []
+        self.poly_vecs_flat = [None] * len(self.bndry_verts)
         for i in range(len(self.poly_verts)):
             self.poly_vecs.append([])
             for j in range(len(self.poly_verts[i])):
                 vec = self.poly_verts[i][(j+1) % len(self.poly_verts[i])] - self.poly_verts[i][j]
                 self.poly_vecs[-1].append(vec)
-        self.poly_vecs_flat = flatten_arr(self.poly_vecs)
-
-    def getNorms(self):
-        def rotateCcw90(v):
-            return np.array([-v[1], v[0]])
-        def rotateCw90(v):
-            return np.array([v[1], -v[0]])
-
-        self.poly_norms = [None] * len(self.poly_vecs)
-        for i in range(len(self.poly_vecs)):
-            winding_angle = 0
-            self.poly_norms[i] = [None] * len(self.poly_vecs[i])
-            for j in range(len(self.poly_vecs[i])):
-                winding_angle += radToDegree(getSignedAngle(self.poly_vecs[i][j],self. poly_vecs[i][(j+1)%len(self.poly_vecs[i])]))
-            if winding_angle > 0:
-                self.shape_ccw[i] = True
-
-            for j in range(len(self.poly_verts[i])):
-                if winding_angle > 0:
-                    self.poly_norms[i][j] = rotateCw90(self.poly_vecs[i][j])
-                else:
-                    self.poly_norms[i][j] = rotateCcw90(self.poly_vecs[i][j])
-                self.poly_norms[i][j] /= np.linalg.norm(self.poly_norms[i][j]) # normalize
+        for cid in range(len(self.bndry_verts)):
+            seg = self.getStartEndV(cid)
+            self.poly_vecs_flat[cid] = self.bndry_verts[seg[1]][0] - self.bndry_verts[seg[0]][0]
 
     def getCenters(self):
         for i in range(len(self.poly_vecs)):
@@ -137,40 +120,18 @@ class Polygons:
             print(self.poly_centers[i])
         print("self.poly_centers: ", self.poly_centers)
 
-    def getSegDist(self):
-        self.seg_dist = [None] * len(self.poly_vecs)
-        for i in range(len(self.poly_vecs)):
-            self.seg_dist[i] = [None] * len(self.poly_vecs[i])
-            for j in range(len(self.poly_vecs[i])):
-                self.seg_dist[i][j] = rayIntrsect(self.poly_centers[i], self.poly_norms[i][j], self.poly_verts[i][j], self.poly_vecs[i][j])
-        print("self.seg_dist: ", self.seg_dist)
-
-    def getNormCenterSegDist(self):
-        self.getNorms()
-        self.getCenters()
-        self.getSegDist()
-
     def getAngles(self):
-        self.angle_diffs = []
         self.angles = []
-        self.angle_diffs_dic = {}
         for i in range(len(self.poly_vecs)):
-            self.angle_diffs.append([])
             self.angles.append([])
             for j in range(len(self.poly_vecs[i])):
                 self.angles[-1].append(angleNormalize(radToDegree(getSignedAngle(np.array([1.0, 0.0]), self.poly_vecs[i][j]))))
-                self.angle_diffs[-1].append(radToDegree(getSignedAngle(self.poly_vecs[i][j],self. poly_vecs[i][(j+1)%len(self.poly_vecs[i])])))
         for i in range(len(self.poly_vecs)):
             for j in range(len(self.poly_vecs[i])):
                 cid1 = self.getCid(i, j)
                 cid2 = self.getCid(i, (j+1)%len(self.poly_vecs[i]))
-                self.angle_diffs_dic[(cid2, cid1)] = self.angle_diffs[i][j]
         self.angles_flat = flatten_arr(self.angles)
-        angle_diffs_flat = flatten_arr(self.angle_diffs)
-        # print("self.angles_flat: ", self.angles_flat)
-        # print("angle_diffs_flat: ", angle_diffs_flat)
 
-    # dont care
     def getPairAngleDiff(self):
         self.angle_diffs_constr_dic = {}
         for i in range(len(self.path_pairs)):
@@ -250,33 +211,6 @@ class Polygons:
         f.close()
         print("self.shape_rotation: ", self.shape_rotation)
 
-    # def getRels(self):
-    #     self.angle_diffs_constr_dic = {}
-    #     for i in range(len(self.path_pairs)):
-    #         ppair = self.path_pairs[i]
-    #         angle_diff = self.optimized_angles[ppair[1]] - self.optimized_angles[ppair[0]]
-    #         cur_diff = self.angles_flat[ppair[1]] - self.angles_flat[ppair[0]]
-    #         if ppair[2] == False:
-    #             angle_diff += 180
-    #             cur_diff += 180
-    #         angle_diff = angleNormalize(angle_diff)
-    #         cur_diff = angleNormalize(cur_diff)
-    #         print(ppair, ": angle_diff: ", angle_diff)
-    #         print(ppair, ": current diff: ", cur_diff)
-    #         self.angle_diffs_constr_dic[(ppair[1], ppair[0])] = angle_diff
-    #         #
-    #         if round(angle_diff) == 0 or round(angle_diff) == 360:
-    #             self.pair_func_id[i] = 0
-    #         elif round(angle_diff) == 90:
-    #             self.pair_func_id[i] = 1
-    #         elif round(angle_diff) == 270:
-    #             self.pair_func_id[i] = 2
-    #         elif round(angle_diff) == 180 or round(angle_diff) == -180:
-    #             self.pair_func_id[i] = 3
-    #         else:
-    #             print("ERRORRRR")
-    #             print("angle_diff: ", angle_diff)
-
     def readInVerts(self):
         f = open("opt_pts.txt", "r")
         self.optimized_verts = []
@@ -333,44 +267,12 @@ class Polygons:
                     v = (1 - t) * start_displcmnt + t * end_displcmnt + self.bndry_verts[cid][i]
                     curve_verts[i] = v
             self.bndry_verts_uv[cid] = curve_verts
-        self.bndry_verts_uv = flatten_arr(self.bndry_verts_uv )
-        # print("self.bndry_verts_uv: ", self.bndry_verts_uv)
-
-    def getRotatedVerts(self):
-        for shape_id in range(len(self.poly_verts)):
-            shape_norm_pts = np.zeros([len(self.poly_verts[shape_id]), 2])
-            for seg_id in range(len(self.poly_verts[shape_id])):
-                norm_pt = self.poly_centers[shape_id] + self.poly_norms[shape_id][seg_id] * self.seg_dist[shape_id][seg_id]
-                shape_norm_pts[seg_id] = norm_pt
-                self.poly_verts[shape_id][seg_id] = norm_pt
-            # for seg_id in range(len(self.poly_verts[shape_id])):
-            #     last_seg_id = ( seg_id - 1 + len(self.poly_verts[shape_id]) ) % len(self.poly_verts[shape_id])
-            #     t = rayIntrsect(shape_norm_pts[seg_id], self.poly_vecs[shape_id][seg_id], \
-            #         shape_norm_pts[last_seg_id], self.poly_vecs[shape_id][last_seg_id])
-            #     intrsct_pt = shape_norm_pts[seg_id] + t * self.poly_vecs[shape_id][seg_id]
-            #     self.poly_verts[shape_id][seg_id] = intrsct_pt
-
-    def getShapeRotation(self):
-        self.shape_rotation = [None] * len(self.angles)
-        for shape_id in range(len(self.angles)):
-            for angle_id in range(len(self.angles[shape_id])):
-                cid = self.getCid(shape_id, angle_id)
-                angle_ccw = self.optimized_angles[cid] - self.angles_flat[cid]
-                angle_ccw = angleNormalize(angle_ccw)
-                print("cid: ", cid)
-                print("self.optimized_angles[cid]: ", self.optimized_angles[cid])
-                print("self.angles[shape_id][angle_id]: ", self.angles[shape_id][angle_id])
-                print("angle_ccw: ", angle_ccw)
-                self.poly_vecs[shape_id][angle_id] = rotate(angle_ccw, self.poly_vecs[shape_id][angle_id])
-                print("before norm: ", self.poly_norms[shape_id][angle_id])
-                self.poly_norms[shape_id][angle_id] = rotate(angle_ccw, self.poly_norms[shape_id][angle_id])
-                print("after norm: ", self.poly_norms[shape_id][angle_id])
-                print("\n")
-        self.getRotatedVerts()
 
     def rotateShapes(self):
+        print("self.angles: ", self.angles)
         for shape_id in range(len(self.angles)):
             rot_angle = self.shape_rotation[shape_id]
+            print("rot_angle: ", rot_angle)
             rot_angle_rad = degreeToRad(rot_angle)
             rot_matrix = np.array([[math.cos(rot_angle_rad), -math.sin(rot_angle_rad)], [math.sin(rot_angle_rad), math.cos(rot_angle_rad)]])
 
@@ -378,7 +280,6 @@ class Polygons:
                 v = self.poly_verts[shape_id][vid]
                 rot_v = np.matmul(rot_matrix, v)
                 self.poly_verts[shape_id][vid] = rot_v
-
 
             # get new shape_center
             new_shape_center = np.zeros(2)
@@ -388,6 +289,7 @@ class Polygons:
 
             # displace to old center
             disp = self.poly_centers[shape_id] - new_shape_center
+            print("disp: ", disp)
             for vid in range(len(self.angles[shape_id])):
                 self.poly_verts[shape_id][vid] += disp
 
@@ -403,3 +305,11 @@ class Polygons:
 
     def resetShapeRotations(self):
         self.shape_rotation = [0] * len(self.angles)
+
+    def get_bndry_c_verts_start(self):
+        cnt = 0
+        bndry_c_verts_start = []
+        for curve in self.bndry_verts:
+            bndry_c_verts_start.append(cnt)
+            cnt += len(curve)
+        return bndry_c_verts_start

@@ -74,7 +74,7 @@ class OptVerts:
                 elif p_rel[4] == 2:
                     self.m.addConstr(self.py[segs[0][se]] - self.px[segs[1][se]] == self.ds_x[i])
                     self.m.addConstr(-self.px[segs[0][se]] - self.py[segs[1][se]] == self.ds_y[i])
-                # (x, y) -> (x, y)
+                # (x, y) -> -(x, y)
                 elif p_rel[4] == 3:
                     self.m.addConstr(-self.px[segs[0][se]] - self.px[segs[1][se]] == self.ds_x[i])
                     self.m.addConstr(-self.py[segs[0][se]] - self.py[segs[1][se]] == self.ds_y[i])
@@ -107,9 +107,11 @@ class OptVerts:
             f.write(str(self.px[i].x) + " " + str(self.py[i].x) + "\n")
         f.close()
 
-        f = open("opt_verts_3_obj.txt", "w")
-        f.write(str(self.m.getObjective().getValue()))
+        f = open("optmized_ds.txt", "w")
+        for i in range(len(self.ds_x)):
+            f.write(str(self.ds_x[i].x) + " " + str(self.ds_y[i].x) + "\n")
         f.close()
+
         # for v in self.m.getVars():
         #     print('%s %g' % (v.varName, v.x))
 
