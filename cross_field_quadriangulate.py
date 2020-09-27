@@ -54,9 +54,13 @@ class Singularity:
         self.angles = prc_sols_2
 
 class BoundaryNode:
-    def __init__(self, loc, v_before):
+    def __init__(self, loc, v_before, sl_id):
         self.loc = loc
         self.v_before = v_before
+        self.sl_id = sl_id
+
+    def __repr__(self):
+        return "loc: " + str(self.loc) + ", v_before: " + str(self.v_before) + ", sl_id: " + str(self.sl_id)
 
 class MegaNode:
     def __init__(self, loc, out_line_ids=[], list_id = 0):
@@ -64,80 +68,78 @@ class MegaNode:
         self.out_line_ids = out_line_ids
         self.list_id = list_id
 
-def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
-    def segIntrsct(s1, e1, s2, e2):
-        v1 = e1 - s1
-        v2 = e2 - s2
-        M = np.zeros([2,2])
-        M[:,0] = v1
-        M[:,1] = -v2
-        rhs = s2 - s1
-        ts = np.linalg.solve(M, rhs)
-    #     print("ts: ", ts)
-        if ts[0] >= 0 and ts[0] <= 1 and ts[1] >= 0 and ts[1] <= 1:
-            return (True, s1 + v1 * ts[0])
-        return (False, None)
+def segIntrsct(s1, e1, s2, e2):
+    v1 = e1 - s1
+    v2 = e2 - s2
+    M = np.zeros([2,2])
+    M[:,0] = v1
+    M[:,1] = -v2
+    rhs = s2 - s1
+    ts = np.linalg.solve(M, rhs)
+    if ts[0] >= 0 and ts[0] <= 1 and ts[1] >= 0 and ts[1] <= 1:
+        return (True, s1 + v1 * ts[0])
+    return (False, None)
 
-    def getBaryCoords(v, vs):
-        M = np.zeros([2,2])
-        M[0] = vs[0] - vs[2]
-        M[1] = vs[1] - vs[2]
-        rhs = v - vs[2]
-        bary_coords = np.linalg.solve(M.T, rhs)
-        bary_coords = np.append(bary_coords, 1-bary_coords[0]-bary_coords[1])
-        return bary_coords
-
-    def inRange(coords):
-        res = True
-        for i in range(3):
-            res = res and (coords[i] >= 0 and coords[i] <=1)
-        return res
-
-    def findFace(v):
-        nonlocal faces, vertices
-
-        for fid in range(len(faces)):
-            vs = vertices[faces[fid]]
-            bary_coords = getBaryCoords(v, vs)
-
-            if inRange(bary_coords):
-                return (fid, bary_coords)
-        return None
-
-    stream_lines = []
-
-    def getClosestArm(rep, v_angle):
-        rep_angle = np.arctan2(rep[1], rep[0])
-        start_angle = rep_angle / 4
-    #     v_angle = np.arctan2(v[1], v[0])
-        v_angle = ( v_angle + 2 * np.pi ) % ( 2 * np.pi )
-        min_diff = np.inf
-        min_arm_angle = 0
-
-        for i in range(4):
-            arm_angle = ( start_angle + i * np.pi / 2 + 2 * np.pi ) % ( 2 * np.pi )
-            diff = min( abs(arm_angle - v_angle), 2 * np.pi - abs(arm_angle - v_angle) )
-            if diff < min_diff:
-                min_diff = diff
-                min_arm_angle = arm_angle
-
-        return min_arm_angle
-
-    def getClosestEdge(coords, fid):
-        nonlocal faces, vertices
-        smallest_dim = np.argmin(coords)
-        if smallest_dim == 0:
-            edge_vids = [1, 2]
-        elif smallest_dim == 1:
-            edge_vids = [0, 2]
-        else:
-            edge_vids = [0, 1]
-        return faces[fid][edge_vids]
+def untilStreamLine(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps, path_pairs_no_orientation):
 
     def traceSeparatrix(src_sing, angle_id):
-        nonlocal dt_reg, dt_init, stream_lines, vertices, faces
+        nonlocal dt, stream_lines, vertices, faces, bndry_nodes
 
-        def createBndryNode(v, fid, stream_line):
+        def getBaryCoords(v, vs):
+            M = np.zeros([2,2])
+            M[0] = vs[0] - vs[2]
+            M[1] = vs[1] - vs[2]
+            rhs = v - vs[2]
+            bary_coords = np.linalg.solve(M.T, rhs)
+            bary_coords = np.append(bary_coords, 1-bary_coords[0]-bary_coords[1])
+            return bary_coords
+
+        def inRange(coords):
+            res = True
+            for i in range(3):
+                res = res and (coords[i] >= 0 and coords[i] <=1)
+            return res
+
+        def findFace(v):
+            nonlocal faces, vertices
+
+            for fid in range(len(faces)):
+                vs = vertices[faces[fid]]
+                bary_coords = getBaryCoords(v, vs)
+
+                if inRange(bary_coords):
+                    return (fid, bary_coords)
+            return None
+
+        def getClosestArm(rep, v_angle):
+            rep_angle = np.arctan2(rep[1], rep[0])
+            start_angle = rep_angle / 4
+        #     v_angle = np.arctan2(v[1], v[0])
+            v_angle = ( v_angle + 2 * np.pi ) % ( 2 * np.pi )
+            min_diff = np.inf
+            min_arm_angle = 0
+
+            for i in range(4):
+                arm_angle = ( start_angle + i * np.pi / 2 + 2 * np.pi ) % ( 2 * np.pi )
+                diff = min( abs(arm_angle - v_angle), 2 * np.pi - abs(arm_angle - v_angle) )
+                if diff < min_diff:
+                    min_diff = diff
+                    min_arm_angle = arm_angle
+
+            return min_arm_angle
+
+        def getClosestEdge(coords, fid):
+            nonlocal faces, vertices
+            smallest_dim = np.argmin(coords)
+            if smallest_dim == 0:
+                edge_vids = [1, 2]
+            elif smallest_dim == 1:
+                edge_vids = [0, 2]
+            else:
+                edge_vids = [0, 1]
+            return faces[fid][edge_vids]
+
+        def createBndryNode(v, fid, stream_line, sl_id):
             edge = getClosestEdge(getBaryCoords(stream_line[-1], vertices[faces[fid]]), fid)
             edge_vs = vertices[edge]
             bndry_node_loc = segIntrsct(stream_line[-1], v, edge_vs[0], edge_vs[1])[1]
@@ -148,67 +150,208 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
                 vid_on_bndry = min(faces[fid])
                 bndry_node_loc = segIntrsct(stream_line[-1], v, vertices[vid_on_bndry], vertices[vid_on_bndry+1])[1]
                 stream_line.append(bndry_node_loc)
-                bndry_node = BoundaryNode(bndry_node_loc, vid_on_bndry)
+                bndry_node = BoundaryNode(bndry_node_loc, vid_on_bndry, sl_id)
                 bndry_nodes.append(bndry_node)
                 return
 
             stream_line.append(bndry_node_loc)
-            bndry_node = BoundaryNode(bndry_node_loc, min(edge))
+            bndry_node = BoundaryNode(bndry_node_loc, min(edge), sl_id)
             bndry_nodes.append(bndry_node)
 
+        def getFidCoords(v, prev_fid):
+            global rep_vs
+            test_coords = getBaryCoords(v, vertices[faces[prev_fid]])
+            if inRange(test_coords):
+                coords = test_coords
+                fid = prev_fid
+            else:
+                res = findFace(v)
+                if res == None:
+                    return None
+                fid = res[0]
+                coords = res[1]
+            return (fid, coords)
+
+        def getArmV(v, prev_fid, prev_arm_angle, coords=None):
+            if type(coords) is not np.ndarray:
+                fid_coords = getFidCoords(v, prev_fid)
+                if fid_coords == None:
+                    return (None, None)
+                fid, coords = fid_coords
+            else:
+                fid = prev_fid
+
+            face = faces[fid]
+            fgs = np.array(rep_vs[face])
+            fg = coords[0] * fgs[0] + coords[1] * fgs[1] + coords[2] * fgs[2]
+            fg_norm = np.linalg.norm(fg)
+
+            arm_angle = getClosestArm(fg, prev_arm_angle)
+            arm_v = np.array([np.cos(arm_angle), np.sin(arm_angle)]) * fg_norm
+            return arm_v
+
+        # start
+        sl_id = 0
         stream_line = []
         stream_line.append(src_sing.loc)
 
-        v = src_sing.loc + dt_init * np.array([np.cos(src_sing.angles[angle_id]), np.sin(src_sing.angles[angle_id])])
+        v = src_sing.loc + dt * np.array([np.cos(src_sing.angles[angle_id]), np.sin(src_sing.angles[angle_id])])
         res = findFace(v)
         fid = res[0]
         coords = res[1]
         stream_dir = np.array([np.cos(src_sing.angles[angle_id]), np.sin(src_sing.angles[angle_id])])
         arm_angle = src_sing.angles[angle_id]
 
-        dt = dt_init
         while True:
-            # stop if meeting another singularity
-            met_sing = False
-            for sing in singularities:
-                if sing == src_sing:
-                    continue
-                if fid == sing.fid:
-                    stream_line.append(v)
-                    stream_line.append(sing.loc)
-                    met_sing = True
-                    break
-            if met_sing:
+            arm_v = getArmV(v, fid, arm_angle, coords)
+            v_t = v + dt * arm_v
+            arm_v_tmp = getArmV(v_t, fid, arm_angle)
+            if arm_v_tmp[0] == None:
+                arm_v_tmp = arm_v
+
+            arm_v_avg = 0.5 * (arm_v + arm_v_tmp)
+            arm_angle = np.arctan2(arm_v_avg[1], arm_v_avg[0])
+            v = v + dt * arm_v_avg
+
+            fid_coords = getFidCoords(v, fid)
+            if fid_coords == None:
+                createBndryNode(v, fid, stream_line, len(stream_lines))
+                sl_id += 1
                 break
-
-
-            face = faces[fid]
-            stream_line.append(v)
-
-            fgs = np.array(rep_vs[face])
-            fg = coords[0] * fgs[0] + coords[1] * fgs[1] + coords[2] * fgs[2]
-            fg_norm = np.linalg.norm(fg)
-
-            arm_angle = getClosestArm(fg, arm_angle)
-            arm_v = np.array([np.cos(arm_angle), np.sin(arm_angle)]) * fg_norm
-
-            v = v + dt * arm_v
-
-            test_coords = getBaryCoords(v, vertices[face])
-            if inRange(test_coords):
-                coords = test_coords
-                continue
             else:
-                dt = dt_reg
-                res = findFace(v)
-                if res == None:
-                    createBndryNode(v, fid, stream_line)
-                    break
-                fid = res[0]
-                coords = res[1]
+                stream_line.append(v)
+                fid, coords = fid_coords
 
         stream_line = np.array(stream_line)
         stream_lines.append(stream_line)
+
+    # start ===================================================================
+    # get boundary vertices of shape
+    shape1_verts = []
+    shape1_reps = []
+    for cid in shape_curve_ids[shape_id_test]:
+        for i in range(len(bndry_verts[cid])):
+            shape1_verts.append(bndry_verts[cid][i])
+            shape1_reps.append(bndry_reps[cid][i])
+
+    # triangulation
+    segments = []
+    for i in range(len(shape1_verts)-1):
+        segments.append([i, i+1])
+    segments.append([len(shape1_verts)-1, 0])
+
+    A = dict(vertices=shape1_verts, segments=segments)
+    B = tr.triangulate(A, 'pqa.02')
+
+    faces = B['triangles']
+    vertices = B['vertices']
+    bndry_n = len(shape1_verts)
+    N = len(B['vertices'])
+
+    # get representation angles
+    Fs = harmonic_mapping.map(faces, vertices, np.array(shape1_reps)[:,0])
+    Gs = harmonic_mapping.map(faces, vertices, np.array(shape1_reps)[:,1])
+    rep_vs = np.stack((Fs, Gs)).T
+    mem_as = [None]*len(rep_vs)
+
+    # get member angles
+    for i in range(len(rep_vs)):
+        rep_angle = np.arctan2(rep_vs[i][1], rep_vs[i][0])
+        angle = rep_angle / 4
+        mem_as[i] = angle
+
+    # find singularities
+    singularities = []
+
+    for fid in range(len(faces)):
+        face = faces[fid]
+        vs = vertices[face]
+        fgs = rep_vs[face]
+        M = np.array([[fgs[0][0] - fgs[2][0], fgs[1][0] - fgs[2][0]], [fgs[0][1] - fgs[2][1], fgs[1][1] - fgs[2][1]]])
+
+        if np.linalg.matrix_rank(M) < 2:
+            continue
+        rhs = np.array([-fgs[2][0], -fgs[2][1]])
+        sing_coords = np.linalg.solve(M, rhs)
+        if 0 <= sing_coords[0] <= 1 and 0 <= sing_coords[1] <= 1 and 0 <= sing_coords[0] + sing_coords[1] <= 1:
+            sing_pos = sing_coords[0] * vs[0] + sing_coords[1] * vs[1] + (1 - sing_coords[0] - sing_coords[1]) * vs[2]
+            sing = Singularity(sing_pos, vs, fgs, fid)
+            sing.find_sep_angles()
+            singularities.append(sing)
+
+    def getSmallestCidInPair(cid):
+        nonlocal path_pairs_no_orientation
+        for ppair in path_pairs_no_orientation:
+            if cid in ppair:
+                return min(list(ppair))
+        return None
+
+    def getCidForV(vid):
+        nonlocal cid_lengths, shape_id_test
+        for i in range(len(cid_lengths)):
+            if vid < cid_lengths[i]:
+                cid = shape_curve_ids[shape_id_test][i]
+                if i == 0:
+                    remainder = vid
+                else:
+                    remainder = vid - cid_lengths[i-1]
+                return ( cid, remainder)
+        return None
+
+    # streamlines
+    dt = 0.005
+    bndry_nodes = []
+    stream_lines = []
+
+    for sing in singularities:
+        for a_id in range(len(sing.angles)):
+            traceSeparatrix(sing, a_id)
+
+    cid_lengths = [0] * len(shape_curve_ids[shape_id_test])
+    for i in range(len(shape_curve_ids[shape_id_test])):
+        cid = shape_curve_ids[shape_id_test][i]
+        cid_lengths[i] = len(bndry_verts[cid])
+
+    for i in range(1, len(cid_lengths)):
+        cid_lengths[i] += cid_lengths[i-1]
+
+    def getSmallestCidInPair(cid):
+        nonlocal path_pairs_no_orientation
+        for ppair in path_pairs_no_orientation:
+            if cid in ppair:
+                return min(list(ppair))
+        return None
+
+    cid_nodes_map = {}
+    for bndry_node in bndry_nodes:
+        cid, remainder = getCidForV(bndry_node.v_before)
+        if cid is not None:
+            if cid in cid_nodes_map:
+                cid_nodes_map[cid].append([bndry_node, remainder])
+            else:
+                cid_nodes_map[cid] = [[bndry_node, remainder]]
+
+    cid_nodes_map
+
+    return (cid_nodes_map, stream_lines, vertices, faces)
+
+def getQuadruangulation(bndry_verts, shape_curve_ids, shape_id_test, \
+    bndry_reps, path_pairs_no_orientation, bndry_nodes, stream_lines, \
+    vertices, faces):
+
+    cid_lengths = []
+
+    def getCidLengths():
+        nonlocal cid_lengths
+        cid_lengths = [0] * len(shape_curve_ids[shape_id_test])
+        for i in range(len(shape_curve_ids[shape_id_test])):
+            cid = shape_curve_ids[shape_id_test][i]
+            cid_lengths[i] = len(bndry_verts[cid])
+
+        for i in range(1, len(cid_lengths)):
+            cid_lengths[i] += cid_lengths[i-1]
+
+    getCidLengths()
 
     def getCorners():
         nonlocal corners
@@ -218,18 +361,26 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
             cid = shape_curve_ids[shape_id_test][i]
             cnt += len(bndry_verts[cid])
 
+    def getCidForV(vid):
+        nonlocal cid_lengths, shape_id_test
+        for i in range(len(cid_lengths)):
+            if vid < cid_lengths[i]:
+                cid = shape_curve_ids[shape_id_test][i]
+                if i == 0:
+                    remainder = vid
+                else:
+                    remainder = vid - cid_lengths[i-1]
+                return ( cid, remainder)
+        return None
+
     def streamLineIntrsctDumb(sid1, sid2):
         nonlocal stream_lines
         v_num_1 = len(stream_lines[sid1])
         v_num_2 = len(stream_lines[sid2])
-        print("v_num_1: ", v_num_1)
-        print("v_num_2: ", v_num_2)
-
         for i in range(v_num_1 - 1):
             for j in range(v_num_2 - 1):
                 res = segIntrsct(stream_lines[sid1][i], stream_lines[sid1][i+1], stream_lines[sid2][j], stream_lines[sid2][j+1])
                 if res[0]:
-                    print(res[1])
                     end1 = i + 1
                     end2 = j + 1
                     intrsctn = res[1]
@@ -257,8 +408,6 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
             (start1, end1, start2, end2, intrsctn) = res
             if start1==0 or start2==0:
                 return
-            print("intrsctn: ", intrsctn)
-            display_intrsctns.append(intrsctn)
 
             new_stream_line_1 = stream_lines[sid1][end1:v_num_1]
             new_stream_line_2 = stream_lines[sid2][end2:v_num_2]
@@ -280,9 +429,6 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
         v_num_2 = len(stream_lines[sid2])
         mid1 = int((start1 + end1) / 2)
         mid2 = int((start2 + end2) / 2)
-
-        print("start1, ", start1, ", mid1, ", mid1, ", end1, ", end1)
-        print("start2, ", start2, ", mid2, ", mid2, ", end2, ", end2)
 
         if end1 - start1 == 1 and end2 - start2 == 1:
             intersection = segIntrsct(stream_lines[sid1][start1], stream_lines[sid1][end1], stream_lines[sid2][start2], stream_lines[sid2][end2])[1]
@@ -457,25 +603,62 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
         return line_len
 
     def getAllLinelength():
-        nonlocal all_stream_lines, lines_lens, inc_len
+        nonlocal all_stream_lines, lines_lens
         for i in range(len(all_stream_lines)):
             lines_lens[i] = streamLineLength(all_stream_lines[i])
-        print("lines_lens: ", lines_lens)
-        inc_len = min(lines_lens)
-        if shape_id_test == 2:
-            inc_len /= 10
+
+    def getSmallestCidInPair(cid):
+        for ppair in path_pairs_no_orientation:
+            if cid in ppair:
+                return min(list(ppair))
+
+    def cidInPairs(cid):
+        for ppair in path_pairs_no_orientation:
+            if cid in ppair:
+                return True
+        return False
+
+    def getSmallestPairingLineId(group_lids):
+        nonlocal bndry_stream_line_cids, stream_lines
+        bndry_lids = []
+        bndry_cids = {}
+        for lid in group_lids:
+            # on bndry
+            if lid >= len(stream_lines):
+                bndry_lid = lid - len(stream_lines)
+                bndry_lids.append(bndry_lid)
+        for i in range(len(bndry_lids)):
+            cid = bndry_stream_line_cids[bndry_lids[i]]
+            if cidInPairs(cid):
+                bndry_cids[getSmallestCidInPair(cid)] = bndry_lids[i]
+
+        if len(bndry_cids) > 0:
+            min_cid = min(list(bndry_cids.keys()))
+            return bndry_cids[min_cid] + len(stream_lines)
+        return None
+
 
     def getAllLineUVlengths():
         nonlocal all_stream_lines, lines_lens, line_groups
         for group_lids in line_groups:
-            group_line_lens = np.zeros(len(group_lids))
             group_lids_list = list(group_lids)
-            for i in range(len(group_lids_list)):
-                lid = group_lids_list[i]
-                group_line_lens[i] = lines_lens[lid]
-            avg_line_len = np.average(group_line_lens)
 
-            inc_num = math.floor(avg_line_len / inc_len)
+            pairing_lid = getSmallestPairingLineId(group_lids_list)
+            if pairing_lid != None:
+                pairing_line_len = lines_lens[pairing_lid]
+                inc_num = round(pairing_line_len / inc_len)
+
+            else:
+                group_line_lens = np.zeros(len(group_lids))
+
+                for i in range(len(group_lids_list)):
+                    lid = group_lids_list[i]
+                    group_line_lens[i] = lines_lens[lid]
+                avg_line_len = np.average(group_line_lens)
+                max_line_len = np.amax(group_line_lens)
+
+                # use the stream line on the connecting boundary
+                inc_num = round(max_line_len / inc_len)
 
             for i in range(len(group_lids_list)):
                 lid = group_lids_list[i]
@@ -538,7 +721,7 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
         segments.append([len(patches_verts[patch_id])-1, 0])
 
         A = dict(vertices=patches_verts[patch_id], segments=segments)
-        B = tr.triangulate(A, 'pqa.02')
+        B = tr.triangulate(A, 'pa.02')
         return B
 
     def parameterizaPatch(trngl_info, patch_id):
@@ -590,12 +773,17 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
             uvs = parameterizaPatch(trngl_info, patch_id)
             writeOut(trngl_info, uvs, patch_id, offset)
             offset += len(trngl_info['vertices'])
-            print("len(trngl_info['vertices']): ", len(trngl_info['vertices']))
 
         file.close()
 
-    # start ===================================================================
-    # get boundary vertices of shape
+    def addToListMap(map, key, elem):
+        if key in map:
+            map[key].append(elem)
+        else:
+            map[key] = [elem]
+
+#=====================
+
     shape1_verts = []
     shape1_reps = []
     for cid in shape_curve_ids[shape_id_test]:
@@ -603,67 +791,14 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
             shape1_verts.append(bndry_verts[cid][i])
             shape1_reps.append(bndry_reps[cid][i])
 
-    # triangulation
-    segments = []
-    for i in range(len(shape1_verts)-1):
-        segments.append([i, i+1])
-    segments.append([len(shape1_verts)-1, 0])
-
-    A = dict(vertices=shape1_verts, segments=segments)
-    B = tr.triangulate(A, 'pqa.02')
-
-    faces = B['triangles']
-    vertices = B['vertices']
-    bndry_n = len(shape1_verts)
-    N = len(B['vertices'])
-
-    # get representation angles
-    Fs = harmonic_mapping.map(faces, vertices, np.array(shape1_reps)[:,0])
-    Gs = harmonic_mapping.map(faces, vertices, np.array(shape1_reps)[:,1])
-    rep_vs = np.stack((Fs, Gs)).T
-    mem_as = [None]*len(rep_vs)
-
-    # get member angles
-    for i in range(len(rep_vs)):
-        rep_angle = np.arctan2(rep_vs[i][1], rep_vs[i][0])
-        angle = rep_angle / 4
-        mem_as[i] = angle
-
-    # find singularities
-    singularities = []
-
-    for fid in range(len(faces)):
-        face = faces[fid]
-        vs = vertices[face]
-        fgs = rep_vs[face]
-        M = np.array([[fgs[0][0] - fgs[2][0], fgs[1][0] - fgs[2][0]], [fgs[0][1] - fgs[2][1], fgs[1][1] - fgs[2][1]]])
-
-        if np.linalg.matrix_rank(M) < 2:
-            continue
-        rhs = np.array([-fgs[2][0], -fgs[2][1]])
-        sing_coords = np.linalg.solve(M, rhs)
-        if 0 <= sing_coords[0] <= 1 and 0 <= sing_coords[1] <= 1 and 0 <= sing_coords[0] + sing_coords[1] <= 1:
-            sing_pos = sing_coords[0] * vs[0] + sing_coords[1] * vs[1] + (1 - sing_coords[0] - sing_coords[1]) * vs[2]
-            sing = Singularity(sing_pos, vs, fgs, fid)
-            sing.find_sep_angles()
-            singularities.append(sing)
-
-    # streamlines
-    dt_reg = 0.01
-    dt_init = 0.01
-    bndry_nodes = []
-    stream_lines = []
-
-    for sing in singularities:
-        for a_id in range(len(sing.angles)):
-            traceSeparatrix(sing, a_id)
-
     corners = []
     getCorners()
     corner_vs = vertices[corners]
 
     bndry_nodes.sort(key=lambda x: x.v_before)
     bndry_stream_lines = []
+    bndry_stream_line_cids = []
+    cid_stream_lines_map = {}
 
     for i in range(len(bndry_nodes)):
         stream_line_1 = [bndry_nodes[i].loc]
@@ -690,6 +825,9 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
                 stream_line_1.append(shape1_verts[j % len(shape1_verts)])
             stream_line_1 = np.array(stream_line_1)
             bndry_stream_lines.append(stream_line_1)
+            cid = getCidForV(start_vid)[0]
+            bndry_stream_line_cids.append(cid)
+            addToListMap(cid_stream_lines_map, cid, len(bndry_stream_lines)-1)
 
             for j in range(mid, stop_vid):
                 stream_line_2.append(shape1_verts[j % len(shape1_verts)])
@@ -697,6 +835,9 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
             stream_line_2.append(bndry_nodes[(i+1)%len(bndry_nodes)].loc)
             stream_line_2 = np.array(stream_line_2)
             bndry_stream_lines.append(stream_line_2)
+            cid = getCidForV(stop_vid % len(shape1_verts))[0]
+            bndry_stream_line_cids.append(cid)
+            addToListMap(cid_stream_lines_map, cid, len(bndry_stream_lines)-1)
 
         else:
             for j in range(start_vid, stop_vid):
@@ -704,12 +845,13 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
             stream_line_1.append(bndry_nodes[(i+1)%len(bndry_nodes)].loc)
             stream_line_1 = np.array(stream_line_1)
             bndry_stream_lines.append(stream_line_1)
+            cid = getCidForV(start_vid)[0]
+            bndry_stream_line_cids.append(cid)
+            addToListMap(cid_stream_lines_map, cid, len(bndry_stream_lines)-1)
 
     for i in range(5):
         for j in range(5, 10):
-            print("i: ", i)
-            print("j: ", j)
-            streamLineIntrsctDumb(i, j)
+            streamLineIntrsct(i, j)
 
     all_stream_lines = stream_lines + bndry_stream_lines
 
@@ -726,9 +868,9 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
     line_groups = []
     getLineGroup()
 
+    inc_len = 0.13
     lines_uv_lens = [0] * len(all_stream_lines)
     lines_lens = [0] * len(all_stream_lines)
-    inc_len = 0
     getAllLinelength()
     getAllLineUVlengths()
 
@@ -741,7 +883,6 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
 
     if shape_id_test == 2:
         bndry_stream_lines = [None] * 4
-        print("shape_curve_ids[shape_id_test]: ", shape_curve_ids[shape_id_test])
         bndry_stream_lines[0] = bndry_verts[12]
         bndry_stream_lines[0] = np.append(bndry_stream_lines[0], [bndry_verts[13][0]], axis = 0)
         bndry_stream_lines[1] = np.append(bndry_verts[13], bndry_verts[14], axis = 0)
@@ -750,3 +891,5 @@ def quadrangulate(bndry_verts, shape_curve_ids, shape_id_test, bndry_reps):
         bndry_stream_lines[2] = np.append(bndry_stream_lines[2], [bndry_verts[16][0]], axis = 0)
         bndry_stream_lines[3] = bndry_verts[16]
         bndry_stream_lines[3] = np.append(bndry_stream_lines[3], [bndry_verts[12][0]], axis = 0)
+
+    return None
